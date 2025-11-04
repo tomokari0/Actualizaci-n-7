@@ -1,22 +1,28 @@
 import { GoogleGenAI, Modality, GenerateContentResponse, Chat } from '@google/genai';
-import { GroundingChunk } from './types';
+import { GroundingChunk } from '../types';
 
+// FIX: Use process.env.API_KEY as per the guidelines.
 const API_KEY = process.env.API_KEY;
 
+let ai: GoogleGenAI | null = null;
+let chatModel: Chat | null = null;
+
 if (!API_KEY) {
-  console.warn("API key not found. Please set the API_KEY environment variable.");
+  // FIX: Update error message to refer to API_KEY.
+  console.error("API_KEY not found. Please set the API_KEY environment variable.");
+} else {
+    ai = new GoogleGenAI({ apiKey: API_KEY });
+    chatModel = ai.chats.create({
+      model: 'gemini-2.5-flash',
+      config: {
+        systemInstruction: 'You are SeikoBot, a helpful assistant for the SeikoYT video platform. You know about movies, TV shows, and can help users navigate the platform. Your tone is friendly and cinematic.',
+      },
+    });
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
-
-const chatModel: Chat = ai.chats.create({
-  model: 'gemini-2.5-flash',
-  config: {
-    systemInstruction: 'You are SeikoBot, a helpful assistant for the SeikoYT video platform. You know about movies, TV shows, and can help users navigate the platform. Your tone is friendly and cinematic.',
-  },
-});
 
 export const sendMessageToChatbot = async (message: string): Promise<string> => {
+  if (!chatModel) return "AI service is not configured. Missing API Key.";
   try {
     const response = await chatModel.sendMessage({ message });
     return response.text;
@@ -27,6 +33,10 @@ export const sendMessageToChatbot = async (message: string): Promise<string> => 
 };
 
 export const editImageWithPrompt = async (base64Image: string, mimeType: string, prompt: string): Promise<string | null> => {
+  if (!ai) {
+    console.error("AI service is not configured. Missing API Key.");
+    return null;
+  }
   try {
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
@@ -61,6 +71,10 @@ export const editImageWithPrompt = async (base64Image: string, mimeType: string,
 };
 
 export const generateImageWithPrompt = async (prompt: string): Promise<string | null> => {
+    if (!ai) {
+      console.error("AI service is not configured. Missing API Key.");
+      return null;
+    }
     try {
         const response = await ai.models.generateImages({
             model: 'imagen-4.0-generate-001',
@@ -82,6 +96,10 @@ export const generateImageWithPrompt = async (prompt: string): Promise<string | 
 };
 
 export const generateProfilePicture = async (prompt: string): Promise<string | null> => {
+    if (!ai) {
+      console.error("AI service is not configured. Missing API Key.");
+      return null;
+    }
     try {
         const response = await ai.models.generateImages({
             model: 'imagen-4.0-generate-001',
@@ -103,6 +121,10 @@ export const generateProfilePicture = async (prompt: string): Promise<string | n
 };
 
 export const searchWithGrounding = async (query: string): Promise<{ text: string; sources: GroundingChunk[] }> => {
+    if (!ai) {
+      console.error("AI service is not configured. Missing API Key.");
+      return { text: "AI service is not configured. Missing API Key.", sources: [] };
+    }
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({
             model: "gemini-2.5-flash",

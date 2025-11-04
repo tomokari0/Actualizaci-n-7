@@ -19,8 +19,9 @@ export interface ChatMessage {
 
 export interface GroundingChunk {
   web?: {
-    uri: string;
-    title: string;
+    // FIX: Made uri and title optional to match the type from @google/genai.
+    uri?: string;
+    title?: string;
   };
 }
 

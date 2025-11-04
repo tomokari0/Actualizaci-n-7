@@ -477,7 +477,8 @@ const SearchResultsContent: React.FC<{ query: string; results: { text: string; s
                 <div>
                     <h4 className="font-bold mb-2 text-gray-400">Sources:</h4>
                     <ul className="list-disc list-inside space-y-1">
-                        {results.sources.map((source, index) => source.web && (
+                        {/* FIX: Add a check for source.web.uri to prevent using an undefined href. */}
+                        {results.sources.map((source, index) => source.web && source.web.uri && (
                             <li key={index}>
                                 <a href={source.web.uri} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:underline">
                                     {source.web.title || source.web.uri}
