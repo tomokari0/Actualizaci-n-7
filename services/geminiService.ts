@@ -1,7 +1,8 @@
 import { GoogleGenAI, Modality, GenerateContentResponse, Chat } from '@google/genai';
 import { GroundingChunk } from '../types';
 
-// FIX: Per coding guidelines, the API key must be obtained from process.env.API_KEY. This also resolves the TypeScript error 'Property 'env' does not exist on type 'ImportMeta''.
+// FIX: Switched from `import.meta.env.VITE_API_KEY` to `process.env.API_KEY` to resolve the TypeScript error
+// and align with the Gemini API guidelines, which mandate using `process.env.API_KEY`.
 const API_KEY = process.env.API_KEY;
 
 let ai: GoogleGenAI | null = null;
