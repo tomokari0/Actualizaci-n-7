@@ -1,8 +1,7 @@
 import { GoogleGenAI, Modality, GenerateContentResponse, Chat } from '@google/genai';
 import { GroundingChunk } from '../types';
 
-// FIX: Switched from `import.meta.env.VITE_API_KEY` to `process.env.API_KEY` to resolve the TypeScript error
-// and align with the Gemini API guidelines, which mandate using `process.env.API_KEY`.
+// FIX: Use process.env.API_KEY to align with Gemini API guidelines and fix the TypeScript error.
 const API_KEY = process.env.API_KEY;
 
 let ai: GoogleGenAI | null = null;
@@ -10,7 +9,7 @@ let chatModel: Chat | null = null;
 
 if (!API_KEY) {
   // This error will be visible in the browser's developer console.
-  console.error("API_KEY not found. Please ensure it is set in your environment variables.");
+  console.error("API_KEY not found. Please ensure it is set in your environment variables and that you have redeployed the site.");
 } else {
     ai = new GoogleGenAI({ apiKey: API_KEY });
     chatModel = ai.chats.create({
