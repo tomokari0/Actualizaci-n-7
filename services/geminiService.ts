@@ -1,15 +1,15 @@
 import { GoogleGenAI, Modality, GenerateContentResponse, Chat } from '@google/genai';
 import { GroundingChunk } from '../types';
 
-// FIX: Use process.env.API_KEY as per the guidelines.
+// FIX: Per coding guidelines, the API key must be obtained from process.env.API_KEY. This also resolves the TypeScript error 'Property 'env' does not exist on type 'ImportMeta''.
 const API_KEY = process.env.API_KEY;
 
 let ai: GoogleGenAI | null = null;
 let chatModel: Chat | null = null;
 
 if (!API_KEY) {
-  // FIX: Update error message to refer to API_KEY.
-  console.error("API_KEY not found. Please set the API_KEY environment variable.");
+  // This error will be visible in the browser's developer console.
+  console.error("API_KEY not found. Please ensure it is set in your environment variables.");
 } else {
     ai = new GoogleGenAI({ apiKey: API_KEY });
     chatModel = ai.chats.create({
