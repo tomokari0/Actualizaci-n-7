@@ -1,7 +1,9 @@
 import { GoogleGenAI, Modality, GenerateContentResponse, Chat } from '@google/genai';
 import { GroundingChunk } from '../types';
 
-// FIX: Use process.env.API_KEY to align with Gemini API guidelines and fix the TypeScript error.
+// The Vite-compatible way to access environment variables on the client-side.
+// Your Netlify environment variable must be named VITE_API_KEY.
+// FIX: Switched to process.env.API_KEY to align with @google/genai guidelines and fix the TypeScript error.
 const API_KEY = process.env.API_KEY;
 
 let ai: GoogleGenAI | null = null;
@@ -9,7 +11,7 @@ let chatModel: Chat | null = null;
 
 if (!API_KEY) {
   // This error will be visible in the browser's developer console.
-  console.error("API_KEY not found. Please ensure it is set in your environment variables and that you have redeployed the site.");
+  console.error("API_KEY not found. Please ensure it is set as an environment variable.");
 } else {
     ai = new GoogleGenAI({ apiKey: API_KEY });
     chatModel = ai.chats.create({
