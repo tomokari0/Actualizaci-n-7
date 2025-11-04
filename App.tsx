@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Content, ChatMessage, GroundingChunk, UserProfile } from './types';
+import { Content, ChatMessage, GroundingChunk } from './types';
 import { MOCK_CONTENT } from './constants';
-import { sendMessageToChatbot, editImageWithPrompt, generateImageWithPrompt, searchWithGrounding, generateProfilePicture } from './services/geminiService';
+import { sendMessageToChatbot, editImageWithPrompt, generateImageWithPrompt, searchWithGrounding } from './services/geminiService';
 
 // --- HELPER & UTILITY ---
 
@@ -60,248 +60,27 @@ const SendIcon: React.FC<{ className?: string }> = ({ className }) => (
 const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.69l.59-1.22c.28-.58.89-1 1.52-1.02.7-.02 1.34.34 1.7.94l.59 1.22L18 3.5c.61.12 1.13.53 1.38 1.09l.59 1.22-1.22.59c-.58.28-1 .89-1.02 1.52-.02.7.34 1.34.94 1.7l1.22.59-1.22.59c-.58.28-1 .89-1.02 1.52s.34 1.34.94 1.7l1.22.59-.59 1.22c-.25.56-.77.97-1.38 1.09l.59 1.22c-.58.28-1 .89-1.02 1.52s.34 1.34.94 1.7l1.22.59-.59 1.22c-.25.56-.77.97-1.38 1.09L16.4 18l-1.22.59c-.58.28-1 .89-1.02 1.52c0 .7.34 1.34.94 1.7l1.22.59-1.22.59c-.58.28-1 .89-1.02 1.52s.34 1.34.94 1.7l1.22.59-.59 1.22c-.25.56-.77.97-1.38 1.09L16.4 18l-1.22.59c-.58.28-1 .89-1.02 1.52.02.7-.34 1.34-.94 1.7l-1.22.59 1.22-.59c.58-.28 1-.89 1.02-1.52s-.34-1.34-.94-1.7l-1.22-.59.59-1.22c.25-.56.77-.97 1.38-1.09L11.6 18l1.22-.59c.58-.28 1-.89 1.02-1.52s-.34-1.34-.94-1.7l-1.22-.59.59-1.22c.25-.56.77-.97 1.38-1.09L11.6 6l1.22.59c.58.28 1 .89 1.02 1.52s-.34-1.34-.94-1.7l-1.22.59-.59-1.22c-.25-.56-.77-.97-1.38-1.09L6 3.5l-1.22.59c-.61.12-1.13.53-1.38 1.09l-.59 1.22 1.22.59c.58.28 1 .89 1.02 1.52.02.7-.34 1.34-.94 1.7l-1.22.59L3.5 12l.59 1.22c.25.56.77.97 1.38 1.09L6 16.4l1.22-.59c.58-.28 1-.89 1.02-1.52s-.34-1.34-.94-1.7l-1.22-.59.59-1.22c.25-.56.77-.97 1.38-1.09L8.4 6l-1.22-.59c-.58-.28-1-.89-1.02-1.52s.34-1.34.94-1.7L7.7 2.69l.59-1.22C8.54.9,9.15.54,9.85.52c.7-.02,1.34.34,1.7.94l.45.93z"></path></svg>
 );
-const GoogleIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24"><path fill="#4285F4" d="M21.35,11.1H12.18V13.83H18.69C18.36,17.64 15.19,19.27 12.19,19.27C8.36,19.27 5,16.25 5,12C5,7.9 8.2,4.73 12.19,4.73C14.04,4.73 15.3,5.46 16.25,6.45L18.88,3.81C17.02,2.19 14.84,1.27 12.19,1.27C6.42,1.27 2,6.48 2,12C2,17.52 6.42,22.73 12.19,22.73C17.96,22.73 22,18.36 22,12.27C22,11.77 21.68,11.1 21.35,11.1Z"/></svg>
-);
-const UserIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path></svg>
-);
-
-// --- AUTHENTICATION & PROFILE SETUP ---
-
-const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
-    const [isSignUp, setIsSignUp] = useState(false);
-    const featuredContent = MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0];
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        onLogin();
-    };
-
-    return (
-        <div className="relative h-screen w-screen bg-black flex items-center justify-center">
-            <img src={featuredContent.backdropUrl} alt="background" className="absolute inset-0 w-full h-full object-cover opacity-30" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
-            
-            <header className="absolute top-0 left-0 right-0 z-20">
-                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16 md:h-20">
-                     <h1 className="text-3xl md:text-4xl text-red-600 font-bebas tracking-wider">SEIKOYT</h1>
-                 </div>
-            </header>
-            
-            <div className="relative z-10 bg-black/70 p-8 sm:p-12 rounded-lg max-w-md w-full">
-                <h2 className="text-white text-3xl font-bold mb-6">{isSignUp ? 'Sign Up' : 'Sign In'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <input 
-                        type="email" 
-                        placeholder="Email Address" 
-                        required
-                        className="w-full bg-gray-700 text-white rounded px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-600"
-                    />
-                    <input 
-                        type="password" 
-                        placeholder="Password" 
-                        required
-                        className="w-full bg-gray-700 text-white rounded px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-600"
-                    />
-                    <button type="submit" className="w-full bg-red-600 text-white font-bold py-3 rounded hover:bg-red-700 transition-colors">
-                        {isSignUp ? 'Sign Up' : 'Sign In'}
-                    </button>
-                </form>
-                <div className="mt-4 text-center text-gray-400">or</div>
-                <button onClick={onLogin} className="w-full mt-4 bg-white/90 text-black font-medium py-3 rounded flex items-center justify-center hover:bg-white transition-colors">
-                    <GoogleIcon className="w-6 h-6 mr-2" />
-                    Sign in with Google
-                </button>
-                <p className="mt-8 text-center text-gray-400">
-                    {isSignUp ? 'Already have an account?' : 'New to SeikoYT?'}
-                    <button onClick={() => setIsSignUp(!isSignUp)} className="text-white font-bold ml-2 hover:underline">
-                        {isSignUp ? 'Sign in now.' : 'Sign up now.'}
-                    </button>
-                </p>
-                <p className="mt-6 text-xs text-gray-500 text-center">
-                    By signing in, you agree to our <a href="#" className="underline hover:text-gray-300">Terms of Service</a> and <a href="#" className="underline hover:text-gray-300">Privacy Policy</a>.
-                </p>
-            </div>
-        </div>
-    );
-};
-
-const ProfileSetupPage: React.FC<{ onProfileSave: (profile: UserProfile) => void }> = ({ onProfileSave }) => {
-    const [username, setUsername] = useState('');
-    const [profilePictureUrl, setProfilePictureUrl] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    const handleGenerateAvatar = async () => {
-        if (!username.trim()) {
-            setError('Please enter a username first.');
-            return;
-        }
-        setIsLoading(true);
-        setError('');
-        const result = await generateProfilePicture(username);
-        if (result) {
-            setProfilePictureUrl(`data:image/jpeg;base64,${result}`);
-        } else {
-            setError('Could not generate an avatar. Please try again.');
-        }
-        setIsLoading(false);
-    };
-
-    const handleSave = () => {
-        if (!username.trim() || !profilePictureUrl) {
-            setError('Please enter a username and generate an avatar.');
-            return;
-        }
-        onProfileSave({ username, profilePictureUrl });
-    };
-
-    return (
-        <div className="relative h-screen w-screen bg-black flex items-center justify-center p-4">
-             <img src={MOCK_CONTENT[0].backdropUrl} alt="background" className="absolute inset-0 w-full h-full object-cover opacity-30" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
-            
-            <header className="absolute top-0 left-0 right-0 z-20">
-                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16 md:h-20">
-                     <h1 className="text-3xl md:text-4xl text-red-600 font-bebas tracking-wider">SEIKOYT</h1>
-                 </div>
-            </header>
-
-            <div className="relative z-10 bg-black/70 p-8 sm:p-12 rounded-lg max-w-md w-full text-white">
-                <h2 className="text-3xl font-bold mb-6 text-center">Create Your Profile</h2>
-                <div className="space-y-6">
-                    <div>
-                        <label htmlFor="username" className="block text-sm font-medium text-gray-300 mb-1">Username</label>
-                        <input
-                            id="username"
-                            type="text"
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            placeholder="e.g., CinemaFan99"
-                            className="w-full bg-gray-700 text-white rounded px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-600"
-                        />
-                    </div>
-                    <div className="flex flex-col items-center space-y-4">
-                         <div className="w-32 h-32 bg-gray-800 rounded-full flex items-center justify-center overflow-hidden">
-                           {isLoading ? (
-                                <div className="text-sm text-gray-400">Generating...</div>
-                            ) : profilePictureUrl ? (
-                                <img src={profilePictureUrl} alt="Profile Avatar" className="w-full h-full object-cover" />
-                            ) : (
-                                <UserIcon className="w-20 h-20 text-gray-500" />
-                            )}
-                        </div>
-                        <button onClick={handleGenerateAvatar} disabled={isLoading || !username} className="w-full bg-gray-600 text-white font-bold py-2 px-4 rounded hover:bg-gray-700 transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed">
-                            {isLoading ? 'Generating...' : 'Generate AI Avatar'}
-                        </button>
-                    </div>
-
-                    {error && <p className="text-red-500 text-center">{error}</p>}
-                    
-                    <button onClick={handleSave} disabled={!username || !profilePictureUrl} className="w-full bg-red-600 text-white font-bold py-3 rounded hover:bg-red-700 transition-colors disabled:bg-red-900 disabled:cursor-not-allowed">
-                        Save and Continue
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
 
 
-const ProfileModalContent: React.FC<{ userProfile: UserProfile; onProfileUpdate: (profile: UserProfile) => void; onClose: () => void }> = ({ userProfile, onProfileUpdate, onClose }) => {
-    const [username, setUsername] = useState(userProfile.username);
-    const [profilePictureUrl, setProfilePictureUrl] = useState(userProfile.profilePictureUrl);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    const handleGenerateAvatar = async () => {
-        setIsLoading(true);
-        setError('');
-        const result = await generateProfilePicture(username || 'user');
-        if (result) {
-            setProfilePictureUrl(`data:image/jpeg;base64,${result}`);
-        } else {
-            setError('Could not generate a new avatar. Please try again.');
-        }
-        setIsLoading(false);
-    };
-
-    const handleSave = () => {
-        if (!username.trim()) {
-            setError('Username cannot be empty.');
-            return;
-        }
-        onProfileUpdate({ username, profilePictureUrl });
-        onClose();
-    };
-
-    return (
-        <div className="text-white space-y-6">
-            <div className="flex flex-col items-center space-y-4">
-                <div className="w-32 h-32 bg-gray-800 rounded-full flex items-center justify-center overflow-hidden relative group">
-                   {isLoading ? (
-                        <div className="text-sm text-gray-400">Generating...</div>
-                    ) : (
-                        <img src={profilePictureUrl} alt="Profile Avatar" className="w-full h-full object-cover" />
-                    )}
-                </div>
-                <button onClick={handleGenerateAvatar} disabled={isLoading} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded text-sm disabled:bg-gray-500">
-                    {isLoading ? 'Generating...' : 'Generate New Avatar'}
-                </button>
-            </div>
-             <div>
-                <label htmlFor="edit-username" className="block text-sm font-medium text-gray-300 mb-1">Username</label>
-                <input
-                    id="edit-username"
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-600"
-                />
-            </div>
-            {error && <p className="text-red-500">{error}</p>}
-            <button onClick={handleSave} className="w-full bg-red-600 text-white font-bold py-2 px-4 rounded hover:bg-red-700 transition-colors">
-                Save Changes
-            </button>
-        </div>
-    );
-};
-
-// --- UI COMPONENTS (for the main app) ---
+// --- UI COMPONENTS ---
 
 type Page = 'home' | 'movies';
 
 const Header: React.FC<{ 
     onSearchClick: (query: string) => void; 
     onAiToolsClick: () => void; 
-    onLogout: () => void;
     onNavigate: (page: Page) => void;
     currentPage: Page;
-    userProfile: UserProfile;
-    onProfileClick: () => void;
-}> = ({ onSearchClick, onAiToolsClick, onLogout, onNavigate, currentPage, userProfile, onProfileClick }) => {
+}> = ({ onSearchClick, onAiToolsClick, onNavigate, currentPage }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [isScrolled, setIsScrolled] = useState(false);
-    const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
+    
     useEffect(() => {
         const handleScroll = () => {
             setIsScrolled(window.scrollY > 10);
         };
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
-    }, []);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setProfileDropdownOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     const handleSearchSubmit = (e: React.FormEvent) => {
@@ -338,20 +117,6 @@ const Header: React.FC<{
                     <button onClick={onAiToolsClick} className="bg-red-600/80 hover:bg-red-600 text-white p-2 rounded-full transition-colors" aria-label="AI Tools">
                         <SparklesIcon className="w-5 h-5" />
                     </button>
-                    <div className="relative" ref={dropdownRef}>
-                         <button onClick={() => setProfileDropdownOpen(o => !o)} className="w-10 h-10 rounded-full overflow-hidden border-2 border-transparent hover:border-red-500 transition-colors">
-                             <img src={userProfile.profilePictureUrl} alt={userProfile.username} className="w-full h-full object-cover" />
-                         </button>
-                        {profileDropdownOpen && (
-                             <div className="absolute right-0 mt-2 w-48 bg-black/90 rounded-md shadow-lg py-1 text-white animate-fade-in">
-                                 <div className="px-4 py-2 border-b border-gray-700">
-                                     <p className="font-bold truncate">{userProfile.username}</p>
-                                 </div>
-                                 <button onClick={() => { onProfileClick(); setProfileDropdownOpen(false); }} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800">Profile</button>
-                                 <button onClick={onLogout} className="block w-full text-left px-4 py-2 text-sm hover:bg-gray-800">Sign Out</button>
-                             </div>
-                        )}
-                    </div>
                 </div>
             </div>
         </header>
@@ -843,11 +608,11 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
 };
 
 
-// --- MAIN APP LOGIC WRAPPER ---
+// --- TOP-LEVEL APP COMPONENT ---
 
-const MainApp: React.FC<{ onLogout: () => void; userProfile: UserProfile; onProfileUpdate: (profile: UserProfile) => void; }> = ({ onLogout, userProfile, onProfileUpdate }) => {
+export default function App() {
     const [currentPage, setCurrentPage] = useState<Page>('home');
-    const [activeModal, setActiveModal] = useState<'search' | 'ai' | 'details' | 'profile' | null>(null);
+    const [activeModal, setActiveModal] = useState<'search' | 'ai' | 'details' | null>(null);
     const [selectedContent, setSelectedContent] = useState<Content | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<{ text: string; sources: GroundingChunk[] } | null>(null);
@@ -887,26 +652,19 @@ const MainApp: React.FC<{ onLogout: () => void; userProfile: UserProfile; onProf
     const handleAiToolsClick = () => {
         setActiveModal('ai');
     };
-    
-    const handleProfileClick = () => {
-        setActiveModal('profile');
-    };
 
     const closeModal = () => {
         setActiveModal(null);
         setSelectedContent(null);
     };
-
+    
     return (
         <div className="bg-black min-h-screen text-white">
             <Header 
                 onSearchClick={handleSearch} 
                 onAiToolsClick={handleAiToolsClick} 
-                onLogout={onLogout}
                 onNavigate={setCurrentPage}
                 currentPage={currentPage}
-                userProfile={userProfile}
-                onProfileClick={handleProfileClick}
             />
             <main>
                 {currentPage === 'home' ? (
@@ -960,58 +718,6 @@ const MainApp: React.FC<{ onLogout: () => void; userProfile: UserProfile; onProf
                     </div>
                 </Modal>
             )}
-
-            {activeModal === 'profile' && (
-                <Modal onClose={closeModal} title="Edit Profile">
-                    <ProfileModalContent userProfile={userProfile} onProfileUpdate={onProfileUpdate} onClose={closeModal} />
-                </Modal>
-            )}
         </div>
     );
-}
-
-// --- TOP-LEVEL APP COMPONENT WITH AUTHENTICATION ---
-
-export default function App() {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-
-    useEffect(() => {
-        if (isAuthenticated) {
-            const storedProfile = localStorage.getItem('seikoYTUserProfile');
-            if (storedProfile) {
-                try {
-                    setUserProfile(JSON.parse(storedProfile));
-                } catch (e) {
-                    console.error("Failed to parse user profile from localStorage", e);
-                    localStorage.removeItem('seikoYTUserProfile');
-                }
-            }
-        }
-    }, [isAuthenticated]);
-
-    const handleLogin = () => {
-        setIsAuthenticated(true);
-    };
-
-    const handleLogout = () => {
-        localStorage.removeItem('seikoYTUserProfile');
-        setUserProfile(null);
-        setIsAuthenticated(false);
-    };
-
-    const handleProfileSave = (profile: UserProfile) => {
-        localStorage.setItem('seikoYTUserProfile', JSON.stringify(profile));
-        setUserProfile(profile);
-    };
-
-    if (!isAuthenticated) {
-        return <LoginPage onLogin={handleLogin} />;
-    }
-
-    if (!userProfile) {
-        return <ProfileSetupPage onProfileSave={handleProfileSave} />;
-    }
-
-    return <MainApp onLogout={handleLogout} userProfile={userProfile} onProfileUpdate={handleProfileSave} />;
 }

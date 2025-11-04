@@ -97,31 +97,6 @@ export const generateImageWithPrompt = async (prompt: string): Promise<string | 
     }
 };
 
-export const generateProfilePicture = async (prompt: string): Promise<string | null> => {
-    if (!ai) {
-      console.error("AI service is not configured. Missing API Key.");
-      return null;
-    }
-    try {
-        const response = await ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
-            prompt: `A vibrant, abstract, circular avatar representing a user named "${prompt}". Minimalist, modern, vector style, cinematic lighting.`,
-            config: {
-                numberOfImages: 1,
-                outputMimeType: 'image/jpeg',
-                aspectRatio: '1:1',
-            },
-        });
-        if (response.generatedImages && response.generatedImages.length > 0) {
-            return response.generatedImages[0].image.imageBytes;
-        }
-        return null;
-    } catch (error) {
-        console.error("Error generating profile picture:", error);
-        return null;
-    }
-};
-
 export const searchWithGrounding = async (query: string): Promise<{ text: string; sources: GroundingChunk[] }> => {
     if (!ai) {
       console.error("AI service is not configured. Missing API Key.");

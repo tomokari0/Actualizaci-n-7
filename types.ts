@@ -24,8 +24,3 @@ export interface GroundingChunk {
     title?: string;
   };
 }
-
-export interface UserProfile {
-  username: string;
-  profilePictureUrl: string; // base64 data URL
-}
