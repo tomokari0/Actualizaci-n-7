@@ -1,14 +1,7 @@
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Content, ChatMessage, GroundingChunk, UserProfile } from './types';
 import { MOCK_CONTENT } from './constants';
 import { sendMessageToChatbot, editImageWithPrompt, generateImageWithPrompt, searchWithGrounding, generateProfilePicture } from './services/geminiService';
-import { 
-    signInWithGoogle, 
-    signOutUser, 
-    onAuthStateChanged,
-    type User as FirebaseUser 
-} from './services/firebaseService';
 
 // --- HELPER & UTILITY ---
 
@@ -76,14 +69,14 @@ const UserIcon: React.FC<{ className?: string }> = ({ className }) => (
 
 // --- AUTHENTICATION & PROFILE SETUP ---
 
-const LoadingSpinner: React.FC = () => (
-    <div className="flex items-center justify-center h-screen w-screen bg-black">
-        <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-red-600"></div>
-    </div>
-);
-
-const LoginPage: React.FC<{ onGoogleLogin: () => void }> = ({ onGoogleLogin }) => {
+const LoginPage: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
+    const [isSignUp, setIsSignUp] = useState(false);
     const featuredContent = MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0];
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        onLogin();
+    };
 
     return (
         <div className="relative h-screen w-screen bg-black flex items-center justify-center">
@@ -97,13 +90,36 @@ const LoginPage: React.FC<{ onGoogleLogin: () => void }> = ({ onGoogleLogin }) =
             </header>
             
             <div className="relative z-10 bg-black/70 p-8 sm:p-12 rounded-lg max-w-md w-full">
-                <h2 className="text-white text-3xl font-bold mb-4 text-center">Welcome to SeikoYT</h2>
-                <p className="text-gray-300 text-center mb-8">Sign in with Google to continue.</p>
-                <button onClick={onGoogleLogin} className="w-full bg-white/90 text-black font-medium py-3 rounded flex items-center justify-center hover:bg-white transition-colors">
+                <h2 className="text-white text-3xl font-bold mb-6">{isSignUp ? 'Sign Up' : 'Sign In'}</h2>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input 
+                        type="email" 
+                        placeholder="Email Address" 
+                        required
+                        className="w-full bg-gray-700 text-white rounded px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-600"
+                    />
+                    <input 
+                        type="password" 
+                        placeholder="Password" 
+                        required
+                        className="w-full bg-gray-700 text-white rounded px-4 py-3 focus:outline-none focus:ring-2 focus:ring-red-600"
+                    />
+                    <button type="submit" className="w-full bg-red-600 text-white font-bold py-3 rounded hover:bg-red-700 transition-colors">
+                        {isSignUp ? 'Sign Up' : 'Sign In'}
+                    </button>
+                </form>
+                <div className="mt-4 text-center text-gray-400">or</div>
+                <button onClick={onLogin} className="w-full mt-4 bg-white/90 text-black font-medium py-3 rounded flex items-center justify-center hover:bg-white transition-colors">
                     <GoogleIcon className="w-6 h-6 mr-2" />
                     Sign in with Google
                 </button>
-                <p className="mt-8 text-xs text-gray-500 text-center">
+                <p className="mt-8 text-center text-gray-400">
+                    {isSignUp ? 'Already have an account?' : 'New to SeikoYT?'}
+                    <button onClick={() => setIsSignUp(!isSignUp)} className="text-white font-bold ml-2 hover:underline">
+                        {isSignUp ? 'Sign in now.' : 'Sign up now.'}
+                    </button>
+                </p>
+                <p className="mt-6 text-xs text-gray-500 text-center">
                     By signing in, you agree to our <a href="#" className="underline hover:text-gray-300">Terms of Service</a> and <a href="#" className="underline hover:text-gray-300">Privacy Policy</a>.
                 </p>
             </div>
@@ -111,8 +127,8 @@ const LoginPage: React.FC<{ onGoogleLogin: () => void }> = ({ onGoogleLogin }) =
     );
 };
 
-const ProfileSetupPage: React.FC<{ onProfileSave: (profile: UserProfile) => void; initialUsername?: string; }> = ({ onProfileSave, initialUsername = '' }) => {
-    const [username, setUsername] = useState(initialUsername);
+const ProfileSetupPage: React.FC<{ onProfileSave: (profile: UserProfile) => void }> = ({ onProfileSave }) => {
+    const [username, setUsername] = useState('');
     const [profilePictureUrl, setProfilePictureUrl] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
@@ -956,72 +972,44 @@ const MainApp: React.FC<{ onLogout: () => void; userProfile: UserProfile; onProf
 // --- TOP-LEVEL APP COMPONENT WITH AUTHENTICATION ---
 
 export default function App() {
-    const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-    const [isLoadingAuth, setIsLoadingAuth] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged((user) => {
-            setFirebaseUser(user);
-            setIsLoadingAuth(false);
-        });
-        return () => unsubscribe(); // Cleanup listener on component unmount
-    }, []);
-
-    useEffect(() => {
-        if (firebaseUser) {
-            const storedProfile = localStorage.getItem(`seikoYTUserProfile_${firebaseUser.uid}`);
+        if (isAuthenticated) {
+            const storedProfile = localStorage.getItem('seikoYTUserProfile');
             if (storedProfile) {
                 try {
                     setUserProfile(JSON.parse(storedProfile));
                 } catch (e) {
                     console.error("Failed to parse user profile from localStorage", e);
-                    localStorage.removeItem(`seikoYTUserProfile_${firebaseUser.uid}`);
-                    setUserProfile(null);
+                    localStorage.removeItem('seikoYTUserProfile');
                 }
-            } else {
-                setUserProfile(null); // User authenticated but no profile yet
             }
-        } else {
-            setUserProfile(null); // User is not authenticated
         }
-    }, [firebaseUser]);
+    }, [isAuthenticated]);
 
-    const handleGoogleLogin = async () => {
-        try {
-            await signInWithGoogle();
-            // onAuthStateChanged will handle the state update
-        } catch (error) {
-            console.error("Google Sign-In Error:", error);
-            alert("Could not sign in with Google. Please try again. Make sure your Firebase environment variables are set correctly.");
-        }
+    const handleLogin = () => {
+        setIsAuthenticated(true);
     };
 
-    const handleLogout = async () => {
-        if (firebaseUser) {
-            localStorage.removeItem(`seikoYTUserProfile_${firebaseUser.uid}`);
-        }
-        await signOutUser();
-        // onAuthStateChanged will set firebaseUser to null, triggering a re-render
+    const handleLogout = () => {
+        localStorage.removeItem('seikoYTUserProfile');
+        setUserProfile(null);
+        setIsAuthenticated(false);
     };
 
     const handleProfileSave = (profile: UserProfile) => {
-        if (firebaseUser) {
-            localStorage.setItem(`seikoYTUserProfile_${firebaseUser.uid}`, JSON.stringify(profile));
-            setUserProfile(profile);
-        }
+        localStorage.setItem('seikoYTUserProfile', JSON.stringify(profile));
+        setUserProfile(profile);
     };
-    
-    if (isLoadingAuth) {
-        return <LoadingSpinner />;
-    }
 
-    if (!firebaseUser) {
-        return <LoginPage onGoogleLogin={handleGoogleLogin} />;
+    if (!isAuthenticated) {
+        return <LoginPage onLogin={handleLogin} />;
     }
 
     if (!userProfile) {
-        return <ProfileSetupPage onProfileSave={handleProfileSave} initialUsername={firebaseUser.displayName || ''} />;
+        return <ProfileSetupPage onProfileSave={handleProfileSave} />;
     }
 
     return <MainApp onLogout={handleLogout} userProfile={userProfile} onProfileUpdate={handleProfileSave} />;
