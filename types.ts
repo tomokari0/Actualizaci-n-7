@@ -12,15 +12,4 @@ export interface Content {
   trailerUrl?: string;
 }
 
-export interface ChatMessage {
-  role: 'user' | 'model';
-  text: string;
-}
-
-export interface GroundingChunk {
-  web?: {
-    // FIX: Made uri and title optional to match the type from @google/genai.
-    uri?: string;
-    title?: string;
-  };
-}
+// ChatMessage and GroundingChunk interfaces removed as they were only used by deactivated Gemini features.

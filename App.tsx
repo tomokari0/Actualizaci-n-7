@@ -1,23 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Content, ChatMessage, GroundingChunk } from './types';
+import { Content } from './types';
 import { MOCK_CONTENT } from './constants';
-import { sendMessageToChatbot, editImageWithPrompt, generateImageWithPrompt, searchWithGrounding } from './services/geminiService';
+// Gemini service imports removed as features are deactivated.
 
 // --- HELPER & UTILITY ---
-
-const fileToBase64 = (file: File): Promise<{ base64: string, mimeType: string }> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.split(',')[1];
-      const mimeType = result.match(/:(.*?);/)?.[1] || file.type;
-      resolve({ base64, mimeType });
-    };
-    reader.onerror = error => reject(error);
-  });
-};
 
 const formatTime = (timeInSeconds: number) => {
     const minutes = Math.floor(timeInSeconds / 60);
@@ -51,15 +37,6 @@ const InfoIcon: React.FC<{ className?: string }> = ({ className }) => (
 const CloseIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
 );
-const ChatIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"></path></svg>
-);
-const SendIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-);
-const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.69l.59-1.22c.28-.58.89-1 1.52-1.02.7-.02 1.34.34 1.7.94l.59 1.22L18 3.5c.61.12 1.13.53 1.38 1.09l.59 1.22-1.22.59c-.58.28-1 .89-1.02 1.52-.02.7.34 1.34.94 1.7l1.22.59-1.22.59c-.58.28-1 .89-1.02 1.52s.34 1.34.94 1.7l1.22.59-.59 1.22c-.25.56-.77.97-1.38 1.09l.59 1.22c-.58.28-1 .89-1.02 1.52s.34 1.34.94 1.7l1.22.59-.59 1.22c-.25.56-.77.97-1.38 1.09L16.4 18l-1.22.59c-.58.28-1 .89-1.02 1.52c0 .7.34 1.34.94 1.7l1.22.59-1.22.59c-.58.28-1 .89-1.02 1.52s.34 1.34.94 1.7l1.22.59-.59 1.22c-.25.56-.77.97-1.38 1.09L16.4 18l-1.22.59c-.58.28-1 .89-1.02 1.52.02.7-.34 1.34-.94 1.7l-1.22.59 1.22-.59c.58-.28 1-.89 1.02-1.52s-.34-1.34-.94-1.7l-1.22-.59.59-1.22c.25-.56.77-.97 1.38-1.09L11.6 18l1.22-.59c.58-.28 1-.89 1.02-1.52s-.34-1.34-.94-1.7l-1.22-.59.59-1.22c.25-.56.77-.97 1.38-1.09L11.6 6l1.22.59c.58.28 1 .89 1.02 1.52s-.34-1.34-.94-1.7l-1.22.59-.59-1.22c-.25-.56-.77-.97-1.38-1.09L6 3.5l-1.22.59c-.61.12-1.13.53-1.38 1.09l-.59 1.22 1.22.59c.58.28 1 .89 1.02 1.52.02.7-.34 1.34-.94 1.7l-1.22.59L3.5 12l.59 1.22c.25.56.77.97 1.38 1.09L6 16.4l1.22-.59c.58-.28 1-.89 1.02-1.52s-.34-1.34-.94-1.7l-1.22-.59.59-1.22c.25-.56.77-.97 1.38-1.09L8.4 6l-1.22-.59c-.58-.28-1-.89-1.02-1.52s.34-1.34.94-1.7L7.7 2.69l.59-1.22C8.54.9,9.15.54,9.85.52c.7-.02,1.34.34,1.7.94l.45.93z"></path></svg>
-);
 
 
 // --- UI COMPONENTS ---
@@ -67,12 +44,9 @@ const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
 type Page = 'home' | 'movies';
 
 const Header: React.FC<{ 
-    onSearchClick: (query: string) => void; 
-    onAiToolsClick: () => void; 
     onNavigate: (page: Page) => void;
     currentPage: Page;
-}> = ({ onSearchClick, onAiToolsClick, onNavigate, currentPage }) => {
-    const [searchQuery, setSearchQuery] = useState('');
+}> = ({ onNavigate, currentPage }) => {
     const [isScrolled, setIsScrolled] = useState(false);
     
     useEffect(() => {
@@ -82,13 +56,6 @@ const Header: React.FC<{
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
-
-    const handleSearchSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (searchQuery.trim()) {
-            onSearchClick(searchQuery.trim());
-        }
-    };
     
     const navLinkClasses = (page: Page) => 
         `cursor-pointer transition-colors ${currentPage === page ? 'text-white font-bold' : 'text-gray-300 hover:text-gray-100'}`;
@@ -105,18 +72,7 @@ const Header: React.FC<{
                     </nav>
                 </div>
                 <div className="flex items-center space-x-4">
-                    <form onSubmit={handleSearchSubmit}>
-                        <input
-                            type="text"
-                            placeholder="Ask Gemini about movies..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="bg-black/50 border border-gray-700 rounded-full px-4 py-1.5 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-red-600 w-32 sm:w-64 transition-all duration-300"
-                        />
-                    </form>
-                    <button onClick={onAiToolsClick} className="bg-red-600/80 hover:bg-red-600 text-white p-2 rounded-full transition-colors" aria-label="AI Tools">
-                        <SparklesIcon className="w-5 h-5" />
-                    </button>
+                    {/* Gemini-powered search and AI tools have been deactivated. */}
                 </div>
             </div>
         </header>
@@ -228,239 +184,6 @@ const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (url: stri
         </div>
     </div>
 );
-
-const SearchResultsContent: React.FC<{ query: string; results: { text: string; sources: GroundingChunk[] } | null; isLoading: boolean }> = ({ query, results, isLoading }) => {
-    if (isLoading) {
-        return <div className="text-center p-8">Searching the web with Gemini...</div>;
-    }
-    if (!results) return null;
-
-    return (
-        <div>
-            <p className="mb-4 text-lg text-gray-300">{results.text}</p>
-            {results.sources.length > 0 && (
-                <div>
-                    <h4 className="font-bold mb-2 text-gray-400">Sources:</h4>
-                    <ul className="list-disc list-inside space-y-1">
-                        {/* FIX: Add a check for source.web.uri to prevent using an undefined href. */}
-                        {results.sources.map((source, index) => source.web && source.web.uri && (
-                            <li key={index}>
-                                <a href={source.web.uri} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:underline">
-                                    {source.web.title || source.web.uri}
-                                </a>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
-        </div>
-    );
-};
-
-const ImageEditor: React.FC<{}> = () => {
-    const [prompt, setPrompt] = useState('');
-    const [originalImage, setOriginalImage] = useState<string | null>(null);
-    const [editedImage, setEditedImage] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            setEditedImage(null);
-            setError('');
-            const reader = new FileReader();
-            reader.onload = (event) => setOriginalImage(event.target?.result as string);
-            reader.readAsDataURL(file);
-        }
-    };
-
-    const handleEdit = async () => {
-        if (!originalImage || !prompt) {
-            setError('Please upload an image and provide a prompt.');
-            return;
-        }
-        setIsLoading(true);
-        setError('');
-        setEditedImage(null);
-
-        const base64 = originalImage.split(',')[1];
-        const mimeType = originalImage.match(/:(.*?);/)?.[1] || 'image/jpeg';
-
-        const result = await editImageWithPrompt(base64, mimeType, prompt);
-        if (result) {
-            setEditedImage(`data:image/jpeg;base64,${result}`);
-        } else {
-            setError('Failed to edit the image. Please try again.');
-        }
-        setIsLoading(false);
-    };
-
-    return (
-        <div className="space-y-4">
-            <h3 className="text-xl font-bold">Image Editor</h3>
-            <p className="text-gray-400">Upload an image and tell Gemini how to edit it.</p>
-            <div>
-                <input type="file" accept="image/*" onChange={handleImageUpload} ref={fileInputRef} className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded">Upload Image</button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <h4 className="font-semibold mb-2">Original</h4>
-                    <div className="aspect-square bg-gray-900 rounded-lg flex items-center justify-center">
-                        {originalImage ? <img src={originalImage} alt="Original" className="max-h-full max-w-full object-contain rounded-lg" /> : <span className="text-gray-500">Upload an image</span>}
-                    </div>
-                </div>
-                <div>
-                    <h4 className="font-semibold mb-2">Edited</h4>
-                    <div className="aspect-square bg-gray-900 rounded-lg flex items-center justify-center">
-                        {isLoading ? <div className="text-gray-400">Editing...</div> :
-                         editedImage ? <img src={editedImage} alt="Edited" className="max-h-full max-w-full object-contain rounded-lg" /> : <span className="text-gray-500">Your edited image will appear here</span>}
-                    </div>
-                </div>
-            </div>
-            <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder='e.g., "Add a retro filter" or "Make it black and white"'
-                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-600"
-            />
-            <button onClick={handleEdit} disabled={isLoading || !originalImage || !prompt} className="w-full bg-red-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-500 disabled:cursor-not-allowed">
-                {isLoading ? 'Editing...' : 'Edit with Gemini'}
-            </button>
-            {error && <p className="text-red-500 mt-2">{error}</p>}
-        </div>
-    );
-};
-
-const ImageGenerator: React.FC<{}> = () => {
-    const [prompt, setPrompt] = useState('');
-    const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState('');
-
-    const handleGenerate = async () => {
-        if (!prompt) {
-            setError('Please provide a prompt.');
-            return;
-        }
-        setIsLoading(true);
-        setError('');
-        setGeneratedImage(null);
-
-        const result = await generateImageWithPrompt(prompt);
-        if (result) {
-            setGeneratedImage(`data:image/jpeg;base64,${result}`);
-        } else {
-            setError('Failed to generate the image. Please try again.');
-        }
-        setIsLoading(false);
-    };
-
-    return (
-        <div className="space-y-4">
-            <h3 className="text-xl font-bold">Poster Generator</h3>
-            <p className="text-gray-400">Describe a movie poster and let Gemini create it for you.</p>
-            <div className="aspect-[9/16] bg-gray-900 rounded-lg flex items-center justify-center w-full max-w-sm mx-auto">
-                {isLoading ? <div className="text-gray-400">Generating...</div> :
-                 generatedImage ? <img src={generatedImage} alt="Generated Poster" className="max-h-full max-w-full object-contain rounded-lg" /> : <span className="text-gray-500">Your poster will appear here</span>}
-            </div>
-            <input
-                type="text"
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder='e.g., "A lone astronaut looking at a swirling galaxy"'
-                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-600"
-            />
-            <button onClick={handleGenerate} disabled={isLoading || !prompt} className="w-full bg-red-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-500 disabled:cursor-not-allowed">
-                {isLoading ? 'Generating...' : 'Generate with Gemini'}
-            </button>
-            {error && <p className="text-red-500 mt-2">{error}</p>}
-        </div>
-    );
-};
-
-const Chatbot: React.FC<{}> = () => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [messages, setMessages] = useState<ChatMessage[]>([
-        { role: 'model', text: "Hi! I'm SeikoBot. How can I help you find your next favorite movie?" }
-    ]);
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
-    useEffect(scrollToBottom, [messages]);
-
-    const handleSend = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!input.trim() || isLoading) return;
-        
-        const userMessage: ChatMessage = { role: 'user', text: input };
-        setMessages(prev => [...prev, userMessage]);
-        setInput('');
-        setIsLoading(true);
-
-        const responseText = await sendMessageToChatbot(input);
-        
-        const modelMessage: ChatMessage = { role: 'model', text: responseText };
-        setMessages(prev => [...prev, modelMessage]);
-        setIsLoading(false);
-    };
-
-    return (
-        <div className="fixed bottom-5 right-5 z-50">
-            {isOpen && (
-                <div className="w-80 h-[28rem] bg-gray-900/80 backdrop-blur-md rounded-lg shadow-2xl flex flex-col mb-4 animate-fade-in">
-                    <header className="bg-gray-800 p-3 rounded-t-lg">
-                        <h3 className="text-white font-bold">SeikoBot Assistant</h3>
-                    </header>
-                    <div className="flex-1 p-3 overflow-y-auto">
-                        {messages.map((msg, index) => (
-                            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} mb-2`}>
-                                <div className={`px-3 py-2 rounded-lg max-w-[80%] ${msg.role === 'user' ? 'bg-red-600 text-white' : 'bg-gray-700 text-gray-200'}`}>
-                                    {msg.text}
-                                </div>
-                            </div>
-                        ))}
-                         {isLoading && (
-                            <div className="flex justify-start mb-2">
-                                <div className="px-3 py-2 rounded-lg bg-gray-700 text-gray-200">
-                                    <div className="flex items-center space-x-1">
-                                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-0"></span>
-                                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-200"></span>
-                                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse delay-400"></span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        <div ref={messagesEndRef} />
-                    </div>
-                    <form onSubmit={handleSend} className="p-3 border-t border-gray-700 flex items-center">
-                        <input
-                            type="text"
-                            value={input}
-                            onChange={(e) => setInput(e.target.value)}
-                            placeholder="Ask me anything..."
-                            className="flex-1 bg-gray-800 border border-gray-600 rounded-full px-4 py-2 text-white focus:outline-none focus:ring-1 focus:ring-red-500"
-                        />
-                        <button type="submit" className="ml-2 text-red-500 p-2 rounded-full hover:bg-gray-700 disabled:text-gray-500" disabled={isLoading}>
-                            <SendIcon className="w-5 h-5"/>
-                        </button>
-                    </form>
-                </div>
-            )}
-            <button onClick={() => setIsOpen(!isOpen)} className="bg-red-600 text-white rounded-full p-4 shadow-lg hover:bg-red-700 transition-transform hover:scale-110">
-                {isOpen ? <CloseIcon className="w-7 h-7" /> : <ChatIcon className="w-7 h-7" />}
-            </button>
-        </div>
-    );
-};
 
 const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onClose }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -612,11 +335,8 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
 
 export default function App() {
     const [currentPage, setCurrentPage] = useState<Page>('home');
-    const [activeModal, setActiveModal] = useState<'search' | 'ai' | 'details' | null>(null);
+    const [activeModal, setActiveModal] = useState<'details' | null>(null);
     const [selectedContent, setSelectedContent] = useState<Content | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [searchResults, setSearchResults] = useState<{ text: string; sources: GroundingChunk[] } | null>(null);
-    const [isSearchLoading, setIsSearchLoading] = useState(false);
     const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
 
     const featuredContent = MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0];
@@ -639,20 +359,6 @@ export default function App() {
         }
     };
 
-    const handleSearch = useCallback(async (query: string) => {
-        setSearchQuery(query);
-        setActiveModal('search');
-        setIsSearchLoading(true);
-        setSearchResults(null);
-        const results = await searchWithGrounding(query);
-        setSearchResults(results);
-        setIsSearchLoading(false);
-    }, []);
-
-    const handleAiToolsClick = () => {
-        setActiveModal('ai');
-    };
-
     const closeModal = () => {
         setActiveModal(null);
         setSelectedContent(null);
@@ -661,8 +367,6 @@ export default function App() {
     return (
         <div className="bg-black min-h-screen text-white">
             <Header 
-                onSearchClick={handleSearch} 
-                onAiToolsClick={handleAiToolsClick} 
                 onNavigate={setCurrentPage}
                 currentPage={currentPage}
             />
@@ -690,7 +394,7 @@ export default function App() {
                 )}
             </main>
             
-            <Chatbot />
+            {/* Chatbot component, Search modal, and AI Studio modal removed as Gemini features are deactivated */}
             
             {playingVideoUrl && <VideoPlayer src={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />}
 
@@ -701,21 +405,6 @@ export default function App() {
                         onPlayTrailer={handlePlayClick}
                         onPlayMovie={handlePlayClick}
                     />
-                </Modal>
-            )}
-            
-            {activeModal === 'search' && (
-                <Modal onClose={closeModal} title={`Gemini Results for: "${searchQuery}"`}>
-                    <SearchResultsContent query={searchQuery} results={searchResults} isLoading={isSearchLoading} />
-                </Modal>
-            )}
-
-            {activeModal === 'ai' && (
-                <Modal onClose={closeModal} title="SeikoYT AI Studio">
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                        <ImageEditor />
-                        <ImageGenerator />
-                    </div>
                 </Modal>
             )}
         </div>

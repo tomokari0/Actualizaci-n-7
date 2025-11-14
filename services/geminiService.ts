@@ -1,5 +1,5 @@
-import { GoogleGenAI, Modality, GenerateContentResponse, Chat } from '@google/genai';
-import { GroundingChunk } from '../types';
+// FIX: Import GroundingChunk from @google/genai instead of the local types file.
+import { GoogleGenAI, Modality, GenerateContentResponse, Chat, GroundingChunk } from '@google/genai';
 
 // FIX: Per coding guidelines, the API key must come from `process.env.API_KEY`, which also resolves the 'ImportMeta' error.
 const API_KEY = process.env.API_KEY;
