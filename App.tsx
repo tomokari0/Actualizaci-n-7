@@ -37,6 +37,9 @@ const InfoIcon: React.FC<{ className?: string }> = ({ className }) => (
 const CloseIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
 );
+const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+);
 
 
 // --- UI COMPONENTS ---
@@ -72,7 +75,15 @@ const Header: React.FC<{
                     </nav>
                 </div>
                 <div className="flex items-center space-x-4">
-                    {/* Gemini-powered search and AI tools have been deactivated. */}
+                    <a 
+                        href="https://www.patreon.com/c/SeikoVT?vanity=user" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="flex items-center space-x-2 bg-red-600/90 text-white font-medium px-4 py-2 rounded-full hover:bg-red-600 transition-colors transform hover:scale-105"
+                    >
+                        <HeartIcon className="w-5 h-5" />
+                        <span>Doname :)</span>
+                    </a>
                 </div>
             </div>
         </header>
