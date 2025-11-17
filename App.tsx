@@ -58,11 +58,11 @@ const Header: React.FC<{
     }, []);
     
     const navLinkClasses = (page: Page) => 
-        `cursor-pointer transition-colors ${currentPage === page ? 'text-white font-bold' : 'text-gray-300 hover:text-gray-100'}`;
+        `cursor-pointer transition-colors relative after:content-[''] after:absolute after:left-0 after:bottom-[-4px] after:h-[2px] after:w-full after:bg-red-600 after:transition-transform after:duration-300 ${currentPage === page ? 'text-white font-bold after:scale-x-100' : 'text-gray-300 hover:text-white after:scale-x-0 hover:after:scale-x-100'}`;
 
 
     return (
-        <header className={`fixed top-0 left-0 right-0 z-40 transition-colors duration-300 ${isScrolled ? 'bg-black/90 backdrop-blur-sm' : 'bg-transparent'}`}>
+        <header className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${isScrolled ? 'bg-black/80 backdrop-blur-sm shadow-lg' : 'bg-transparent'}`}>
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16 md:h-20">
                 <div className="flex items-center space-x-8">
                     <h1 className="text-3xl md:text-4xl text-red-600 font-bebas tracking-wider">SEIKOYT</h1>
@@ -80,19 +80,19 @@ const Header: React.FC<{
 };
 
 const HeroBanner: React.FC<{ content: Content; onDetailsClick: () => void; onPlayClick: () => void }> = ({ content, onDetailsClick, onPlayClick }) => (
-    <div className="relative h-screen -mb-32">
-        <img src={content.backdropUrl} alt={content.title} className="absolute inset-0 w-full h-full object-cover" />
+    <div className="relative h-screen -mb-32 overflow-hidden">
+        <img src={content.backdropUrl} alt={content.title} className="absolute inset-0 w-full h-full object-cover animate-kenburns" />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
         <div className="relative z-10 h-full flex flex-col justify-end pb-40 px-4 sm:px-6 lg:px-8">
             <div className="max-w-2xl">
-                <h2 className="text-5xl md:text-7xl font-bebas text-white tracking-wide">{content.title}</h2>
-                <p className="mt-4 text-gray-200 text-lg max-w-lg">{content.description}</p>
-                <div className="mt-6 flex space-x-4">
-                    <button onClick={onPlayClick} className="flex items-center bg-white text-black font-bold px-6 py-2.5 rounded-md hover:bg-gray-200 transition-colors">
+                <h2 className="text-5xl md:text-7xl font-bebas text-white tracking-wide animate-fade-in-up opacity-0">{content.title}</h2>
+                <p className="mt-4 text-gray-200 text-lg max-w-lg animate-fade-in-up opacity-0 animate-fade-in-up-delay-1">{content.description}</p>
+                <div className="mt-6 flex space-x-4 animate-fade-in-up opacity-0 animate-fade-in-up-delay-2">
+                    <button onClick={onPlayClick} className="flex items-center bg-white text-black font-bold px-6 py-2.5 rounded-md hover:bg-gray-200 transition-all transform hover:scale-105">
                         <PlayIcon className="w-6 h-6 mr-2" />
                         Play
                     </button>
-                    <button onClick={onDetailsClick} className="flex items-center bg-gray-600/70 text-white font-bold px-6 py-2.5 rounded-md hover:bg-gray-600/90 transition-colors">
+                    <button onClick={onDetailsClick} className="flex items-center bg-gray-600/70 text-white font-bold px-6 py-2.5 rounded-md hover:bg-gray-600/90 transition-all transform hover:scale-105">
                         <InfoIcon className="w-6 h-6 mr-2" />
                         More Info
                     </button>
@@ -104,8 +104,8 @@ const HeroBanner: React.FC<{ content: Content; onDetailsClick: () => void; onPla
 
 const ContentCard: React.FC<{ content: Content; onCardClick: () => void }> = ({ content, onCardClick }) => (
     <div className="w-full group cursor-pointer" onClick={onCardClick}>
-        <div className="aspect-[2/3] overflow-hidden rounded-md">
-            <img src={content.thumbnailUrl} alt={content.title} className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-300" />
+        <div className="aspect-[2/3] overflow-hidden rounded-md transition-all duration-300 transform group-hover:scale-105 group-hover:shadow-2xl group-hover:shadow-red-800/30">
+            <img src={content.thumbnailUrl} alt={content.title} className="w-full h-full object-cover" />
         </div>
     </div>
 );
@@ -135,10 +135,10 @@ const MoviesPage: React.FC<{ contents: Content[]; onCardClick: (content: Content
 
 const Modal: React.FC<{ children: React.ReactNode; onClose: () => void; title: string }> = ({ children, onClose, title }) => (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-[#141414] text-white rounded-lg overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col animate-slide-up">
-            <header className="flex items-center justify-between p-4 border-b border-gray-800">
+        <div className="bg-[#141414] text-white rounded-lg overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col animate-scale-in">
+            <header className="flex items-center justify-between p-4 border-b border-gray-800 flex-shrink-0">
                 <h2 className="text-2xl font-bebas">{title}</h2>
-                <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
+                <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors rounded-full p-1 hover:bg-gray-700">
                     <CloseIcon className="w-6 h-6" />
                 </button>
             </header>
@@ -162,14 +162,14 @@ const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (url: stri
                 <div className="mt-4 flex items-center space-x-4">
                      <button
                         onClick={() => content.videoUrl && onPlayMovie(content.videoUrl)}
-                        className="flex items-center bg-white text-black font-bold px-6 py-2.5 rounded-md hover:bg-gray-200 transition-colors"
+                        className="flex items-center bg-white text-black font-bold px-6 py-2.5 rounded-md hover:bg-gray-200 transition-all transform hover:scale-105"
                     >
                         <PlayIcon className="w-6 h-6 mr-2" />
                         Play Movie
                     </button>
                     <button
                         onClick={() => content.trailerUrl && onPlayTrailer(content.trailerUrl)}
-                        className="flex items-center bg-gray-600/70 text-white font-bold px-6 py-2.5 rounded-md hover:bg-gray-600/90 transition-colors"
+                        className="flex items-center bg-gray-600/70 text-white font-bold px-6 py-2.5 rounded-md hover:bg-gray-600/90 transition-all transform hover:scale-105"
                     >
                         <PlayIcon className="w-6 h-6 mr-2" />
                         Play Trailer
@@ -292,15 +292,15 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
     };
 
     return (
-        <div ref={containerRef} className="fixed inset-0 bg-black z-50 flex items-center justify-center animate-fade-in" onMouseMove={handleMouseMove}>
+        <div ref={containerRef} className="fixed inset-0 bg-black z-50 flex items-center justify-center animate-fade-in" onMouseMove={handleMouseMove} onMouseLeave={() => setShowControls(false)}>
             <video ref={videoRef} src={src} className="w-full h-auto max-h-full" onClick={togglePlayPause} crossOrigin="anonymous">
                 <track default kind="subtitles" srcLang="en" label="English" src={VTT_TRACK_SRC} />
             </video>
             <button onClick={onClose} className={`absolute top-4 right-4 text-white bg-black/50 p-2 rounded-full transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
                 <CloseIcon className="w-7 h-7" />
             </button>
-            <div className={`absolute bottom-0 left-0 right-0 p-4 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-                <input type="range" min="0" max="100" value={progress} onChange={handleScrub} className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer range-sm" style={{ backgroundSize: `${progress}% 100%` }} />
+            <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+                <input type="range" min="0" max="100" value={progress} onChange={handleScrub} className="w-full h-1 bg-transparent rounded-lg appearance-none cursor-pointer video-progress" />
                 <div className="flex items-center justify-between mt-2 text-white">
                     <div className="flex items-center space-x-4">
                         <button onClick={togglePlayPause}>{isPlaying ? <PauseIcon className="w-7 h-7" /> : <PlayIcon className="w-7 h-7" />}</button>
@@ -361,7 +361,8 @@ export default function App() {
 
     const closeModal = () => {
         setActiveModal(null);
-        setSelectedContent(null);
+        // A small delay to allow the animation to finish before clearing content
+        setTimeout(() => setSelectedContent(null), 300);
     };
     
     return (
