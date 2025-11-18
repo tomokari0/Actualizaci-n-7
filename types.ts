@@ -19,6 +19,7 @@ export interface Comment {
   text: string;
   timestamp: string;
   likes: number;
+  userInteraction?: 'like' | 'dislike';
 }
 
 // ChatMessage and GroundingChunk interfaces removed as they were only used by deactivated Gemini features.

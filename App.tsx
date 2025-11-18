@@ -182,7 +182,8 @@ const CommentsSection: React.FC = () => {
             avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
             text: 'Me encanta la trama, ¡es increíble! 😍',
             timestamp: 'Hace 2 días',
-            likes: 124
+            likes: 124,
+            userInteraction: 'like'
         },
         {
             id: '2',
@@ -219,6 +220,39 @@ const CommentsSection: React.FC = () => {
         setComments([comment, ...comments]);
         setNewComment('');
         setIsFocused(false);
+    };
+
+    const handleLike = (id: string) => {
+        setComments(prevComments => prevComments.map(comment => {
+            if (comment.id === id) {
+                if (comment.userInteraction === 'like') {
+                    // Unlike
+                    return { ...comment, likes: comment.likes - 1, userInteraction: undefined };
+                } else {
+                    // Like (switch from dislike or fresh like)
+                    return { ...comment, likes: comment.likes + 1, userInteraction: 'like' };
+                }
+            }
+            return comment;
+        }));
+    };
+
+    const handleDislike = (id: string) => {
+        setComments(prevComments => prevComments.map(comment => {
+            if (comment.id === id) {
+                 if (comment.userInteraction === 'dislike') {
+                    // Remove dislike
+                    return { ...comment, userInteraction: undefined };
+                 } else if (comment.userInteraction === 'like') {
+                    // Switch from like to dislike
+                    return { ...comment, likes: comment.likes - 1, userInteraction: 'dislike' };
+                 } else {
+                    // Just dislike
+                    return { ...comment, userInteraction: 'dislike' };
+                 }
+            }
+            return comment;
+        }));
     };
 
     return (
@@ -283,11 +317,17 @@ const CommentsSection: React.FC = () => {
                             </div>
                             <p className="text-white text-sm leading-relaxed mb-2">{comment.text}</p>
                             <div className="flex items-center space-x-4">
-                                <button className="flex items-center space-x-1 text-gray-400 hover:text-white group">
+                                <button 
+                                    onClick={() => handleLike(comment.id)}
+                                    className={`flex items-center space-x-1 group transition-colors ${comment.userInteraction === 'like' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                                >
                                     <LikeIcon className="w-5 h-5 group-active:scale-90 transition-transform" />
                                     <span className="text-xs font-medium">{comment.likes > 0 ? comment.likes : ''}</span>
                                 </button>
-                                <button className="text-gray-400 hover:text-white group">
+                                <button 
+                                    onClick={() => handleDislike(comment.id)}
+                                    className={`group transition-colors ${comment.userInteraction === 'dislike' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                                >
                                     <DislikeIcon className="w-5 h-5 group-active:scale-90 transition-transform" />
                                 </button>
                                 <button className="text-xs font-medium text-gray-400 hover:text-white rounded-full hover:bg-gray-800 px-3 py-1">
