@@ -12,4 +12,13 @@ export interface Content {
   trailerUrl?: string;
 }
 
+export interface Comment {
+  id: string;
+  username: string;
+  avatar: string;
+  text: string;
+  timestamp: string;
+  likes: number;
+}
+
 // ChatMessage and GroundingChunk interfaces removed as they were only used by deactivated Gemini features.

@@ -1,6 +1,6 @@
 // FIX: Import useState, useEffect, and useRef from React to resolve multiple 'Cannot find name' errors.
 import React, { useState, useEffect, useRef } from 'react';
-import { Content } from './types';
+import { Content, Comment } from './types';
 import { MOCK_CONTENT } from './constants';
 // Gemini service imports removed as features are deactivated.
 
@@ -40,6 +40,15 @@ const CloseIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+);
+const LikeIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-1.91l-.01-.01L23 10z"></path></svg>
+);
+const DislikeIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v1.91l.01.01L1 14c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"></path></svg>
+);
+const SortIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"></path></svg>
 );
 
 
@@ -150,60 +159,194 @@ const MoviesPage: React.FC<{ contents: Content[]; onCardClick: (content: Content
 const Modal: React.FC<{ children: React.ReactNode; onClose: () => void }> = ({ children, onClose }) => (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
         <div className="bg-[#181818] text-white rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col animate-scale-in" onClick={e => e.stopPropagation()}>
-            <header className="flex items-center justify-end p-2 flex-shrink-0">
-                <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors rounded-full p-2 hover:bg-gray-800">
+            <header className="flex items-center justify-end p-2 flex-shrink-0 absolute top-0 right-0 z-50">
+                <button onClick={onClose} className="text-white hover:text-gray-300 transition-colors bg-black/50 rounded-full p-2 m-2 backdrop-blur-sm">
                     <CloseIcon className="w-6 h-6" />
                 </button>
             </header>
-            <div className="overflow-y-auto px-8 pb-8">
+            <div className="overflow-y-auto w-full">
                 {children}
             </div>
         </div>
     </div>
 );
 
+const CommentsSection: React.FC = () => {
+    const [comments, setComments] = useState<Comment[]>([
+        {
+            id: '1',
+            username: 'GachaFan2024',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+            text: 'Me encanta la trama, ¡es increíble! 😍',
+            timestamp: 'Hace 2 días',
+            likes: 124
+        },
+        {
+            id: '2',
+            username: 'CinemaLover',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka',
+            text: 'La edición de este video es otro nivel. Seiko siempre trayendo calidad.',
+            timestamp: 'Hace 1 semana',
+            likes: 89
+        },
+        {
+            id: '3',
+            username: 'MysteryWatcher',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Milo',
+            text: '¿Alguien más notó el detalle en el minuto 3:45? 😱',
+            timestamp: 'Hace 3 semanas',
+            likes: 456
+        }
+    ]);
+    const [newComment, setNewComment] = useState('');
+    const [isFocused, setIsFocused] = useState(false);
+
+    const handleAddComment = () => {
+        if (!newComment.trim()) return;
+        
+        const comment: Comment = {
+            id: Date.now().toString(),
+            username: 'You',
+            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=You',
+            text: newComment,
+            timestamp: 'Hace unos segundos',
+            likes: 0
+        };
+        
+        setComments([comment, ...comments]);
+        setNewComment('');
+        setIsFocused(false);
+    };
+
+    return (
+        <div className="mt-8 pt-6 border-t border-gray-800 px-4 md:px-0 max-w-5xl mx-auto">
+            <div className="flex items-center mb-6 space-x-8">
+                <h3 className="text-xl font-bold text-white">{comments.length} Comments</h3>
+                <div className="flex items-center space-x-2 text-gray-300 text-sm font-medium cursor-pointer hover:text-white">
+                    <SortIcon className="w-6 h-6" />
+                    <span>Sort by</span>
+                </div>
+            </div>
+
+            {/* Input Section */}
+            <div className="flex space-x-4 mb-8">
+                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=You" alt="User" className="w-10 h-10 rounded-full" />
+                <div className="flex-1">
+                    <div className="relative">
+                        <input 
+                            type="text" 
+                            value={newComment}
+                            onChange={(e) => setNewComment(e.target.value)}
+                            onFocus={() => setIsFocused(true)}
+                            placeholder="Add a comment..."
+                            className="w-full bg-transparent border-b border-gray-700 pb-1 text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors"
+                        />
+                         {/* Animated bottom border line */}
+                        <div className={`absolute bottom-0 left-0 h-[2px] bg-white transition-all duration-300 ease-in-out ${isFocused ? 'w-full' : 'w-0'}`}></div>
+                    </div>
+                    
+                    {isFocused && (
+                        <div className="flex justify-end space-x-3 mt-3">
+                            <button 
+                                onClick={() => {
+                                    setIsFocused(false);
+                                    setNewComment('');
+                                }}
+                                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-gray-800 text-white transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                onClick={handleAddComment}
+                                disabled={!newComment.trim()}
+                                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${newComment.trim() ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`}
+                            >
+                                Comment
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Comments List */}
+            <div className="space-y-6">
+                {comments.map(comment => (
+                    <div key={comment.id} className="flex space-x-4">
+                        <img src={comment.avatar} alt={comment.username} className="w-10 h-10 rounded-full flex-shrink-0" />
+                        <div className="flex-1">
+                            <div className="flex items-baseline space-x-2 mb-1">
+                                <span className="font-bold text-white text-sm">{comment.username}</span>
+                                <span className="text-gray-500 text-xs">{comment.timestamp}</span>
+                            </div>
+                            <p className="text-white text-sm leading-relaxed mb-2">{comment.text}</p>
+                            <div className="flex items-center space-x-4">
+                                <button className="flex items-center space-x-1 text-gray-400 hover:text-white group">
+                                    <LikeIcon className="w-5 h-5 group-active:scale-90 transition-transform" />
+                                    <span className="text-xs font-medium">{comment.likes > 0 ? comment.likes : ''}</span>
+                                </button>
+                                <button className="text-gray-400 hover:text-white group">
+                                    <DislikeIcon className="w-5 h-5 group-active:scale-90 transition-transform" />
+                                </button>
+                                <button className="text-xs font-medium text-gray-400 hover:text-white rounded-full hover:bg-gray-800 px-3 py-1">
+                                    Reply
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (url: string) => void; onPlayMovie: (url: string) => void }> = ({ content, onPlayTrailer, onPlayMovie }) => (
-    <div>
-        <div className="relative aspect-video rounded-lg overflow-hidden -mt-12 mb-6">
+    <div className="pb-12">
+        <div className="relative aspect-video w-full">
             <img src={content.backdropUrl} alt={content.title} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-6">
-                 <h2 className="text-5xl font-bebas text-white">{content.title}</h2>
+            <div className="absolute inset-0 bg-gradient-to-t from-[#181818] via-transparent to-transparent"></div>
+            <div className="absolute bottom-0 left-0 p-8 w-full">
+                 <h2 className="text-5xl font-bebas text-white drop-shadow-lg">{content.title}</h2>
             </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="md:col-span-2">
-                <div className="flex items-baseline space-x-4 mb-4 text-gray-400">
-                    <span className="font-bold text-green-400">97% Match</span>
-                    <span>{content.releaseYear}</span>
-                    <span className="border border-gray-500 px-1 text-sm">{content.rating}</span>
+        <div className="px-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="md:col-span-2">
+                    <div className="flex items-baseline space-x-4 mb-4 text-gray-400">
+                        <span className="font-bold text-green-400">97% Match</span>
+                        <span>{content.releaseYear}</span>
+                        <span className="border border-gray-500 px-1 text-sm">{content.rating}</span>
+                    </div>
+                    <p className="text-gray-300 leading-relaxed">{content.description}</p>
+                    <div className="mt-6 flex flex-wrap gap-4">
+                        <button
+                            onClick={() => content.videoUrl && onPlayMovie(content.videoUrl)}
+                            className="flex items-center bg-white text-black font-bold px-6 py-3 rounded hover:bg-gray-200 transition-all"
+                        >
+                            <PlayIcon className="w-6 h-6 mr-2" />
+                            Play Movie
+                        </button>
+                        <button
+                            onClick={() => content.trailerUrl && onPlayTrailer(content.trailerUrl)}
+                            className="flex items-center bg-gray-600/60 text-white font-bold px-6 py-3 rounded hover:bg-gray-600/80 transition-all"
+                        >
+                            <PlayIcon className="w-6 h-6 mr-2" />
+                            Play Trailer
+                        </button>
+                    </div>
                 </div>
-                <p className="text-gray-300 leading-relaxed">{content.description}</p>
+                <div>
+                     <h3 className="text-gray-500 font-semibold mb-2">Genres</h3>
+                     <div className="flex flex-wrap gap-2">
+                        {content.genre.map(g => (
+                            <span key={g} className="bg-gray-800 text-gray-300 text-xs font-medium px-2.5 py-1 rounded-full">{g}</span>
+                        ))}
+                     </div>
+                </div>
             </div>
-            <div>
-                 <h3 className="text-gray-500 font-semibold mb-2">Genres</h3>
-                 <div className="flex flex-wrap gap-2">
-                    {content.genre.map(g => (
-                        <span key={g} className="bg-gray-800 text-gray-300 text-xs font-medium px-2.5 py-1 rounded-full">{g}</span>
-                    ))}
-                 </div>
-            </div>
-        </div>
-         <div className="mt-8 pt-6 border-t border-gray-800 flex flex-wrap gap-4">
-            <button
-                onClick={() => content.videoUrl && onPlayMovie(content.videoUrl)}
-                className="flex items-center bg-white/20 backdrop-blur-sm border border-white/30 text-white font-bold px-6 py-3 rounded-lg hover:bg-white/30 transition-all transform hover:scale-105"
-            >
-                <PlayIcon className="w-6 h-6 mr-2" />
-                Play Movie
-            </button>
-            <button
-                onClick={() => content.trailerUrl && onPlayTrailer(content.trailerUrl)}
-                className="flex items-center bg-black/20 backdrop-blur-sm border border-white/30 text-white font-bold px-6 py-3 rounded-lg hover:bg-white/40 transition-all transform hover:scale-105"
-            >
-                <PlayIcon className="w-6 h-6 mr-2" />
-                Play Trailer
-            </button>
+            
+            {/* Comments Section */}
+            <CommentsSection />
         </div>
     </div>
 );
