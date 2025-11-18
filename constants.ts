@@ -13,6 +13,8 @@ export const MOCK_CONTENT: Content[] = [
     featured: true,
     videoUrl: 'https://ik.imagekit.io/gzrwng096/RH%20Nulo/RH%20Nulo.mp4?updatedAt=1751922099564',
     trailerUrl: 'https://www.youtube.com/embed/WSCt0ti_wjs?si=J-REG0IuNy0VL1Fm',
+    introStart: 0,
+    introEnd: 1,
   },
   {
     id: '2',
@@ -25,6 +27,8 @@ export const MOCK_CONTENT: Content[] = [
     releaseYear: 2020,
     videoUrl: 'https://ik.imagekit.io/gzrwng096/Guerra%20de%20amor/Guerra%20de%20____%20_Cap%C3%ADtulo%201_%7BSerie%20original_%7DGacha%20life%20(720p_30fps_H264-128kbit_AAC).mp4?updatedAt=1751918267140',
     trailerUrl: 'https://youtu.be/ofLMSTKLjVU',
+    introStart: 0,
+    introEnd: 64,
   },
   {
     id: '3',

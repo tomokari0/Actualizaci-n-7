@@ -3,6 +3,9 @@ import { Content } from './types';
 import { MOCK_CONTENT } from './constants';
 // Gemini service imports removed as features are deactivated.
 
+// FIX: Define custom element as a component variable to bypass strict IntrinsicElements type checking.
+const HyvorTalkComments = 'hyvor-talk-comments' as unknown as React.ComponentType<any>;
+
 // --- HELPER & UTILITY ---
 
 const formatTime = (timeInSeconds: number) => {
@@ -42,6 +45,12 @@ const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const SettingsIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.93 8.87c-.11.21-.06.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.11-.22.06-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"></path></svg>
+);
+const MinimizeIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"></path></svg>
+);
+const ExpandIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"></path></svg>
 );
 
 
@@ -178,15 +187,15 @@ const CommentsSection: React.FC<{ pageId: string }> = ({ pageId }) => {
 
     return (
         <div className="mt-8 pt-6 border-t border-gray-800 px-4 md:px-0 max-w-5xl mx-auto min-h-[300px]">
-            <hyvor-talk-comments
+            <HyvorTalkComments
                 website-id="14533"
                 page-id={pageId}
-            ></hyvor-talk-comments>
+            />
         </div>
     );
 };
 
-const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (url: string) => void; onPlayMovie: (url: string) => void }> = ({ content, onPlayTrailer, onPlayMovie }) => (
+const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (url: string, title: string, description: string) => void; onPlayMovie: (url: string, title: string, description: string, introStart?: number, introEnd?: number) => void }> = ({ content, onPlayTrailer, onPlayMovie }) => (
     <div className="pb-12">
         <div className="relative aspect-video w-full">
             <img src={content.backdropUrl} alt={content.title} className="w-full h-full object-cover" />
@@ -207,14 +216,14 @@ const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (url: stri
                     <p className="text-gray-300 leading-relaxed">{content.description}</p>
                     <div className="mt-6 flex flex-wrap gap-4">
                         <button
-                            onClick={() => content.videoUrl && onPlayMovie(content.videoUrl)}
+                            onClick={() => content.videoUrl && onPlayMovie(content.videoUrl, content.title, content.description, content.introStart, content.introEnd)}
                             className="flex items-center bg-white text-black font-bold px-6 py-3 rounded hover:bg-gray-200 transition-all"
                         >
                             <PlayIcon className="w-6 h-6 mr-2" />
                             Play Movie
                         </button>
                         <button
-                            onClick={() => content.trailerUrl && onPlayTrailer(content.trailerUrl)}
+                            onClick={() => content.trailerUrl && onPlayTrailer(content.trailerUrl, `${content.title} (Trailer)`, "Official Trailer")}
                             className="flex items-center bg-gray-600/60 text-white font-bold px-6 py-3 rounded hover:bg-gray-600/80 transition-all"
                         >
                             <PlayIcon className="w-6 h-6 mr-2" />
@@ -238,7 +247,18 @@ const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (url: stri
     </div>
 );
 
-const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onClose }) => {
+interface VideoPlayerProps {
+    src: string;
+    title: string;
+    description: string;
+    introStart?: number;
+    introEnd?: number;
+    onClose: () => void;
+    isMiniMode: boolean;
+    toggleMiniMode: () => void;
+}
+
+const VideoPlayer: React.FC<VideoPlayerProps> = ({ src, title, description, introStart, introEnd, onClose, isMiniMode, toggleMiniMode }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [isPlaying, setIsPlaying] = useState(true);
@@ -252,9 +272,14 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
     const [showSpeedOptions, setShowSpeedOptions] = useState(false);
     const [quality, setQuality] = useState('1080p');
     const [showQualityOptions, setShowQualityOptions] = useState(false);
+    const [showSkipIntro, setShowSkipIntro] = useState(false);
     const controlsTimeoutRef = useRef<number | null>(null);
     const preMuteVolumeRef = useRef<number>(1);
     const VTT_TRACK_SRC = `data:text/vtt;base64,V0VCVlRUCgowMDowMDowMS4wMDAgLS0+IDAwOjAwOjA0LjAwMwpUaGlzIGlzIGEgc2FtcGxlIHN1YnRpdGxlIGZvciBkZW1vbnN0cmF0aW9uLgoKMDA6MDA6MDUuMDAwIC0tPiAwMDowMDowOS4wMDAKUGxheWJhY2sgc3BlZWQgYW5kIHN1YnRpdGxlcyBhcmUgbm93IGZ1bGx5IGZ1bmN0aW9uYWwu`;
+    
+    // Preview states
+    const [previewTime, setPreviewTime] = useState<number | null>(null);
+    const [previewX, setPreviewX] = useState<number>(0);
 
 
     const hideControls = () => {
@@ -272,6 +297,17 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
             if (video.duration) {
                 setCurrentTime(video.currentTime);
                 setProgress((video.currentTime / video.duration) * 100);
+
+                // Intro detection logic: Show "Skip Intro" if current time is between introStart and introEnd
+                if (introStart !== undefined && introEnd !== undefined) {
+                    if (video.currentTime >= introStart && video.currentTime <= introEnd) {
+                        setShowSkipIntro(true);
+                    } else {
+                        setShowSkipIntro(false);
+                    }
+                } else {
+                     setShowSkipIntro(false);
+                }
             }
         };
         const handleLoadedMetadata = () => {
@@ -292,7 +328,7 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
             video.removeEventListener('loadedmetadata', handleLoadedMetadata);
             if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
         };
-    }, [src]);
+    }, [src, introStart, introEnd]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -361,17 +397,43 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
         hideControls();
     };
 
-    const togglePlayPause = () => setIsPlaying(prev => !prev);
+    const togglePlayPause = (e?: React.MouseEvent) => {
+        e?.stopPropagation();
+        setIsPlaying(prev => !prev);
+    };
     useEffect(() => {
         if (videoRef.current) {
             isPlaying ? videoRef.current.play() : videoRef.current.pause();
         }
     }, [isPlaying]);
 
+    const handleSkipIntro = () => {
+        if (videoRef.current && introEnd !== undefined) {
+            videoRef.current.currentTime = introEnd; // Jump to the end of intro
+            setShowSkipIntro(false);
+        }
+    };
+
     const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!videoRef.current) return;
         const newTime = (Number(e.target.value) / 100) * duration;
         videoRef.current.currentTime = newTime;
+    };
+    
+    const handleProgressMouseMove = (e: React.MouseEvent<HTMLInputElement>) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const width = rect.width;
+        const time = (x / width) * duration;
+        
+        if (time >= 0 && time <= duration) {
+            setPreviewTime(time);
+            setPreviewX(x);
+        }
+    };
+
+    const handleProgressMouseLeave = () => {
+        setPreviewTime(null);
     };
 
     const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -411,75 +473,159 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
         }
     };
 
+    const containerClasses = isMiniMode 
+        ? "fixed bottom-6 right-6 w-96 aspect-video bg-black z-50 shadow-2xl rounded-lg overflow-hidden border border-gray-800 transition-all duration-300 group"
+        : "fixed inset-0 bg-black z-50 flex items-center justify-center animate-fade-in";
+
     return (
-        <div ref={containerRef} className="fixed inset-0 bg-black z-50 flex items-center justify-center animate-fade-in" onMouseMove={handleMouseMove} onMouseLeave={() => setShowControls(false)}>
-            <video ref={videoRef} src={src} className="w-full h-auto max-h-full" onClick={togglePlayPause} crossOrigin="anonymous">
+        <div 
+            ref={containerRef} 
+            className={containerClasses} 
+            onMouseMove={handleMouseMove} 
+            onMouseLeave={() => setShowControls(false)}
+        >
+            <video 
+                ref={videoRef} 
+                src={src} 
+                className={isMiniMode ? "w-full h-full object-cover" : "w-full h-auto max-h-full"} 
+                onClick={isMiniMode ? toggleMiniMode : togglePlayPause} 
+                crossOrigin="anonymous"
+            >
                 <track default kind="subtitles" srcLang="en" label="English" src={VTT_TRACK_SRC} />
             </video>
-            <button onClick={onClose} className={`absolute top-4 right-4 text-white bg-black/50 p-2 rounded-full transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-                <CloseIcon className="w-7 h-7" />
-            </button>
-            <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
-                <input type="range" min="0" max="100" value={progress} onChange={handleScrub} className="w-full h-1 bg-transparent rounded-lg appearance-none cursor-pointer video-progress" />
-                <div className="flex items-center justify-between mt-2 text-white">
-                    <div className="flex items-center space-x-4">
-                        <button onClick={togglePlayPause}>{isPlaying ? <PauseIcon className="w-7 h-7" /> : <PlayIcon className="w-7 h-7" />}</button>
-                        <div className="flex items-center space-x-2">
-                            <button onClick={() => {
-                                const video = videoRef.current;
-                                if (!video) return;
-                                setVolume(currentVolume => {
-                                    if (currentVolume > 0) {
-                                        preMuteVolumeRef.current = currentVolume;
-                                        video.volume = 0;
-                                        return 0;
-                                    } else {
-                                        const restoredVolume = preMuteVolumeRef.current > 0 ? preMuteVolumeRef.current : 1;
-                                        video.volume = restoredVolume;
-                                        return restoredVolume;
-                                    }
-                                });
-                            }}>{volume > 0 ? <VolumeUpIcon className="w-6 h-6" /> : <VolumeOffIcon className="w-6 h-6" />}</button>
-                            <input type="range" min="0" max="1" step="0.05" value={volume} onChange={handleVolumeChange} className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
-                        </div>
-                        <span className="text-sm font-mono">{formatTime(currentTime)} / {formatTime(duration)}</span>
+            
+            {/* Pause Overlay - The Dark Veil */}
+            {!isPlaying && !isMiniMode && (
+                <div 
+                    className="absolute inset-0 bg-black/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center text-center p-8 transition-opacity duration-500 animate-fade-in cursor-pointer"
+                    onClick={togglePlayPause}
+                >
+                    <div className="transform transition-transform duration-300 hover:scale-110 mb-6">
+                         <PlayIcon className="w-24 h-24 text-white opacity-90" />
                     </div>
-                    <div className="flex items-center space-x-4">
-                        <div className="relative">
-                            <button onClick={() => { setShowQualityOptions(q => !q); setShowSpeedOptions(false); }} className={`transition-colors ${showQualityOptions ? 'text-red-500' : 'text-white hover:text-red-500'}`}>
-                                <SettingsIcon className="w-6 h-6" />
-                            </button>
-                            {showQualityOptions && (
-                                <div className="absolute bottom-full mb-2 right-0 bg-black/90 border border-gray-800 rounded-lg overflow-hidden min-w-[120px] z-50 animate-fade-in">
-                                     <div className="px-4 py-2 text-xs text-gray-400 font-bold border-b border-gray-800 bg-white/5">QUALITY</div>
-                                    {['4K', '1080p', '720p', '480p', 'Auto'].map(q => (
-                                        <button 
-                                            key={q} 
-                                            onClick={() => { setQuality(q); setShowQualityOptions(false); }} 
-                                            className={`w-full text-left px-4 py-3 text-sm hover:bg-white/10 flex items-center justify-between transition-colors ${quality === q ? 'text-red-500 font-bold bg-white/5' : 'text-gray-200'}`}
-                                        >
-                                            <span>{q}</span>
-                                            {quality === q && <span className="text-xs bg-red-500 text-white rounded-full w-2 h-2"></span>}
-                                        </button>
-                                    ))}
+                    <h2 className="text-4xl md:text-6xl font-bebas text-white mb-4 drop-shadow-lg tracking-wide">{title}</h2>
+                    <p className="text-gray-300 max-w-2xl text-lg line-clamp-2">{description}</p>
+                    <div className="mt-8 text-sm text-gray-400 font-medium tracking-widest uppercase">Paused</div>
+                </div>
+            )}
+            
+            {isMiniMode && (
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-4 z-30">
+                    <button onClick={toggleMiniMode} className="p-2 bg-black/60 rounded-full text-white hover:bg-red-600 transition-colors">
+                         <ExpandIcon className="w-6 h-6" />
+                    </button>
+                    <button onClick={togglePlayPause} className="p-2 bg-black/60 rounded-full text-white hover:bg-red-600 transition-colors">
+                        {isPlaying ? <PauseIcon className="w-6 h-6" /> : <PlayIcon className="w-6 h-6" />}
+                    </button>
+                    <button onClick={onClose} className="p-2 bg-black/60 rounded-full text-white hover:bg-red-600 transition-colors">
+                         <CloseIcon className="w-6 h-6" />
+                    </button>
+                </div>
+            )}
+
+            {/* Skip Intro Button */}
+            {showSkipIntro && !isMiniMode && (
+                 <button 
+                    onClick={handleSkipIntro}
+                    className="absolute bottom-24 right-4 md:right-12 z-40 bg-black/70 hover:bg-white/20 border border-white/30 backdrop-blur-sm text-white font-medium px-5 py-2 rounded flex items-center space-x-2 transition-all animate-fade-in group"
+                 >
+                    <span>Skip Intro</span>
+                    <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"></path>
+                    </svg>
+                 </button>
+            )}
+
+            {!isMiniMode && (
+                <>
+                    <button onClick={onClose} className={`absolute top-4 right-4 text-white bg-black/50 p-2 rounded-full transition-opacity duration-300 z-50 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+                        <CloseIcon className="w-7 h-7" />
+                    </button>
+                    <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-300 z-50 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+                        <div className="relative w-full group/progress">
+                            {previewTime !== null && !isNaN(previewTime) && (
+                                <div 
+                                    className="absolute bottom-3 -translate-x-1/2 bg-black/80 backdrop-blur text-white text-xs font-medium py-1 px-2 rounded border border-white/10 pointer-events-none whitespace-nowrap z-20"
+                                    style={{ left: previewX }}
+                                >
+                                    {formatTime(previewTime)}
                                 </div>
                             )}
+                            <input 
+                                type="range" 
+                                min="0" 
+                                max="100" 
+                                value={progress} 
+                                onChange={handleScrub} 
+                                onMouseMove={handleProgressMouseMove}
+                                onMouseLeave={handleProgressMouseLeave}
+                                className="w-full h-1 bg-transparent rounded-lg appearance-none cursor-pointer video-progress relative z-10" 
+                            />
                         </div>
-                        <div className="relative">
-                            <button onClick={() => { setShowSpeedOptions(s => !s); setShowQualityOptions(false); }} className="text-sm font-bold w-12 hover:text-red-500 transition-colors">{playbackRate}x</button>
-                            {showSpeedOptions && (
-                                <ul className="absolute bottom-full mb-2 right-0 bg-black/70 rounded-md py-1">
-                                    {[0.5, 1, 1.5, 2].map(rate => (
-                                        <li key={rate}><button onClick={() => changePlaybackRate(rate)} className="px-4 py-1 hover:bg-red-500 w-full text-left text-sm">{rate}x</button></li>
-                                    ))}
-                                </ul>
-                            )}
+                        <div className="flex items-center justify-between mt-2 text-white">
+                            <div className="flex items-center space-x-4">
+                                <button onClick={togglePlayPause}>{isPlaying ? <PauseIcon className="w-7 h-7" /> : <PlayIcon className="w-7 h-7" />}</button>
+                                <div className="flex items-center space-x-2">
+                                    <button onClick={() => {
+                                        const video = videoRef.current;
+                                        if (!video) return;
+                                        setVolume(currentVolume => {
+                                            if (currentVolume > 0) {
+                                                preMuteVolumeRef.current = currentVolume;
+                                                video.volume = 0;
+                                                return 0;
+                                            } else {
+                                                const restoredVolume = preMuteVolumeRef.current > 0 ? preMuteVolumeRef.current : 1;
+                                                video.volume = restoredVolume;
+                                                return restoredVolume;
+                                            }
+                                        });
+                                    }}>{volume > 0 ? <VolumeUpIcon className="w-6 h-6" /> : <VolumeOffIcon className="w-6 h-6" />}</button>
+                                    <input type="range" min="0" max="1" step="0.05" value={volume} onChange={handleVolumeChange} className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
+                                </div>
+                                <span className="text-sm font-mono">{formatTime(currentTime)} / {formatTime(duration)}</span>
+                            </div>
+                            <div className="flex items-center space-x-4">
+                                <div className="relative">
+                                    <button onClick={() => { setShowQualityOptions(q => !q); setShowSpeedOptions(false); }} className={`transition-colors ${showQualityOptions ? 'text-red-500' : 'text-white hover:text-red-500'}`}>
+                                        <SettingsIcon className="w-6 h-6" />
+                                    </button>
+                                    {showQualityOptions && (
+                                        <div className="absolute bottom-full mb-2 right-0 bg-black/90 border border-gray-800 rounded-lg overflow-hidden min-w-[120px] z-50 animate-fade-in">
+                                            <div className="px-4 py-2 text-xs text-gray-400 font-bold border-b border-gray-800 bg-white/5">QUALITY</div>
+                                            {['4K', '1080p', '720p', '480p', 'Auto'].map(q => (
+                                                <button 
+                                                    key={q} 
+                                                    onClick={() => { setQuality(q); setShowQualityOptions(false); }} 
+                                                    className={`w-full text-left px-4 py-3 text-sm hover:bg-white/10 flex items-center justify-between transition-colors ${quality === q ? 'text-red-500 font-bold bg-white/5' : 'text-gray-200'}`}
+                                                >
+                                                    <span>{q}</span>
+                                                    {quality === q && <span className="text-xs bg-red-500 text-white rounded-full w-2 h-2"></span>}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="relative">
+                                    <button onClick={() => { setShowSpeedOptions(s => !s); setShowQualityOptions(false); }} className="text-sm font-bold w-12 hover:text-red-500 transition-colors">{playbackRate}x</button>
+                                    {showSpeedOptions && (
+                                        <ul className="absolute bottom-full mb-2 right-0 bg-black/70 rounded-md py-1">
+                                            {[0.5, 1, 1.5, 2].map(rate => (
+                                                <li key={rate}><button onClick={() => changePlaybackRate(rate)} className="px-4 py-1 hover:bg-red-500 w-full text-left text-sm">{rate}x</button></li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
+                                <button onClick={toggleSubtitles} className={areSubtitlesVisible ? 'text-red-500' : ''}><SubtitlesIcon className="w-6 h-6" /></button>
+                                <button onClick={toggleMiniMode} title="Mini Player">
+                                    <MinimizeIcon className="w-6 h-6" />
+                                </button>
+                                <button onClick={toggleFullScreen}><FullscreenIcon className="w-6 h-6" /></button>
+                            </div>
                         </div>
-                        <button onClick={toggleSubtitles} className={areSubtitlesVisible ? 'text-red-500' : ''}><SubtitlesIcon className="w-6 h-6" /></button>
-                        <button onClick={toggleFullScreen}><FullscreenIcon className="w-6 h-6" /></button>
                     </div>
-                </div>
-            </div>
+                </>
+            )}
         </div>
     );
 };
@@ -493,13 +639,24 @@ const Footer: React.FC = () => (
     </footer>
 );
 
+interface PlayerState {
+    url: string;
+    title: string;
+    description: string;
+    introStart?: number;
+    introEnd?: number;
+}
+
 // --- TOP-LEVEL APP COMPONENT ---
 
 export default function App() {
     const [currentPage, setCurrentPage] = useState<Page>('home');
     const [activeModal, setActiveModal] = useState<boolean>(false);
     const [selectedContent, setSelectedContent] = useState<Content | null>(null);
-    const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
+    
+    // Use a single object to track player state including metadata and intro info
+    const [playerState, setPlayerState] = useState<PlayerState | null>(null);
+    const [isMiniPlayer, setIsMiniPlayer] = useState(false);
 
     const featuredContent = MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0];
     const genres = [...new Set(MOCK_CONTENT.flatMap(c => c.genre))];
@@ -514,10 +671,11 @@ export default function App() {
         setActiveModal(true);
     }
 
-    const handlePlayClick = (url?: string) => {
+    const handlePlayClick = (url: string, title: string, description: string, introStart?: number, introEnd?: number) => {
         if (url) {
             setActiveModal(false);
-            setPlayingVideoUrl(url);
+            setPlayerState({ url, title, description, introStart, introEnd });
+            setIsMiniPlayer(false);
         }
     };
 
@@ -538,7 +696,7 @@ export default function App() {
                         <HeroBanner 
                             content={featuredContent} 
                             onDetailsClick={handleHeroDetailsClick} 
-                            onPlayClick={() => handlePlayClick(featuredContent.videoUrl)}
+                            onPlayClick={() => handlePlayClick(featuredContent.videoUrl || '', featuredContent.title, featuredContent.description, featuredContent.introStart, featuredContent.introEnd)}
                         />
                         <div className="relative z-20 -mt-28">
                             {genres.map(genre => (
@@ -556,7 +714,21 @@ export default function App() {
                 )}
             </main>
             
-            {playingVideoUrl && <VideoPlayer src={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />}
+            {playerState && (
+                <VideoPlayer 
+                    src={playerState.url}
+                    title={playerState.title}
+                    description={playerState.description}
+                    introStart={playerState.introStart}
+                    introEnd={playerState.introEnd}
+                    onClose={() => {
+                        setPlayerState(null);
+                        setIsMiniPlayer(false);
+                    }} 
+                    isMiniMode={isMiniPlayer}
+                    toggleMiniMode={() => setIsMiniPlayer(prev => !prev)}
+                />
+            )}
 
             {activeModal && selectedContent && (
                 <Modal onClose={closeModal}>

@@ -1,3 +1,5 @@
+import React from 'react';
+
 export interface Content {
   id: string;
   title: string;
@@ -10,6 +12,8 @@ export interface Content {
   featured?: boolean;
   videoUrl?: string;
   trailerUrl?: string;
+  introStart?: number;
+  introEnd?: number;
 }
 
 export interface Comment {
@@ -20,14 +24,6 @@ export interface Comment {
   timestamp: string;
   likes: number;
   userInteraction?: 'like' | 'dislike';
-}
-
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'hyvor-talk-comments': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement> & { 'website-id'?: string; 'page-id'?: string }, HTMLElement>;
-    }
-  }
 }
 
 // ChatMessage and GroundingChunk interfaces removed as they were only used by deactivated Gemini features.
