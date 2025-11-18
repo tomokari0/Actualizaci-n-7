@@ -50,6 +50,9 @@ const DislikeIcon: React.FC<{ className?: string }> = ({ className }) => (
 const SortIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"></path></svg>
 );
+const SettingsIcon: React.FC<{ className?: string }> = ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.93 8.87c-.11.21-.06.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.11-.22.06-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"></path></svg>
+);
 
 
 // --- UI COMPONENTS ---
@@ -363,6 +366,8 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
     const [currentTime, setCurrentTime] = useState(0);
     const [showControls, setShowControls] = useState(true);
     const [showSpeedOptions, setShowSpeedOptions] = useState(false);
+    const [quality, setQuality] = useState('1080p');
+    const [showQualityOptions, setShowQualityOptions] = useState(false);
     const controlsTimeoutRef = useRef<number | null>(null);
     const preMuteVolumeRef = useRef<number>(1);
     const VTT_TRACK_SRC = `data:text/vtt;base64,V0VCVlRUCgowMDowMDowMS4wMDAgLS0+IDAwOjAwOjA0LjAwMwpUaGlzIGlzIGEgc2FtcGxlIHN1YnRpdGxlIGZvciBkZW1vbnN0cmF0aW9uLgoKMDA6MDA6MDUuMDAwIC0tPiAwMDowMDowOS4wMDAKUGxheWJhY2sgc3BlZWQgYW5kIHN1YnRpdGxlcyBhcmUgbm93IGZ1bGx5IGZ1bmN0aW9uYWwu`;
@@ -557,7 +562,27 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
                     </div>
                     <div className="flex items-center space-x-4">
                         <div className="relative">
-                            <button onClick={() => setShowSpeedOptions(s => !s)} className="text-sm font-bold w-12">{playbackRate}x</button>
+                            <button onClick={() => { setShowQualityOptions(q => !q); setShowSpeedOptions(false); }} className={`transition-colors ${showQualityOptions ? 'text-red-500' : 'text-white hover:text-red-500'}`}>
+                                <SettingsIcon className="w-6 h-6" />
+                            </button>
+                            {showQualityOptions && (
+                                <div className="absolute bottom-full mb-2 right-0 bg-black/90 border border-gray-800 rounded-lg overflow-hidden min-w-[120px] z-50 animate-fade-in">
+                                     <div className="px-4 py-2 text-xs text-gray-400 font-bold border-b border-gray-800 bg-white/5">QUALITY</div>
+                                    {['4K', '1080p', '720p', '480p', 'Auto'].map(q => (
+                                        <button 
+                                            key={q} 
+                                            onClick={() => { setQuality(q); setShowQualityOptions(false); }} 
+                                            className={`w-full text-left px-4 py-3 text-sm hover:bg-white/10 flex items-center justify-between transition-colors ${quality === q ? 'text-red-500 font-bold bg-white/5' : 'text-gray-200'}`}
+                                        >
+                                            <span>{q}</span>
+                                            {quality === q && <span className="text-xs bg-red-500 text-white rounded-full w-2 h-2"></span>}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div className="relative">
+                            <button onClick={() => { setShowSpeedOptions(s => !s); setShowQualityOptions(false); }} className="text-sm font-bold w-12 hover:text-red-500 transition-colors">{playbackRate}x</button>
                             {showSpeedOptions && (
                                 <ul className="absolute bottom-full mb-2 right-0 bg-black/70 rounded-md py-1">
                                     {[0.5, 1, 1.5, 2].map(rate => (
