@@ -1,6 +1,5 @@
-// FIX: Import useState, useEffect, and useRef from React to resolve multiple 'Cannot find name' errors.
 import React, { useState, useEffect, useRef } from 'react';
-import { Content, Comment } from './types';
+import { Content } from './types';
 import { MOCK_CONTENT } from './constants';
 // Gemini service imports removed as features are deactivated.
 
@@ -40,15 +39,6 @@ const CloseIcon: React.FC<{ className?: string }> = ({ className }) => (
 );
 const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
-);
-const LikeIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h4V9H1v12zm22-11c0-1.1-.9-2-2-2h-6.31l.95-4.57.03-.32c0-.41-.17-.79-.44-1.06L14.17 1 7.59 7.59C7.22 7.95 7 8.45 7 9v10c0 1.1.9 2 2 2h9c.83 0 1.54-.5 1.84-1.22l3.02-7.05c.09-.23.14-.47.14-.73v-1.91l-.01-.01L23 10z"></path></svg>
-);
-const DislikeIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M15 3H6c-.83 0-1.54.5-1.84 1.22l-3.02 7.05c-.09.23-.14.47-.14.73v1.91l.01.01L1 14c0 1.1.9 2 2 2h6.31l-.95 4.57-.03.32c0 .41.17.79.44 1.06L9.83 23l6.59-6.59c.36-.36.58-.86.58-1.41V5c0-1.1-.9-2-2-2zm4 0v12h4V3h-4z"></path></svg>
-);
-const SortIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z"></path></svg>
 );
 const SettingsIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.93 8.87c-.11.21-.06.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.04.24.24.41.48.41h3.84c.24 0 .43-.17.47-.41l.36-2.54c.59-.24 1.13-.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.11-.22.06-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"></path></svg>
@@ -174,170 +164,24 @@ const Modal: React.FC<{ children: React.ReactNode; onClose: () => void }> = ({ c
     </div>
 );
 
-const CommentsSection: React.FC = () => {
-    const [comments, setComments] = useState<Comment[]>([
-        {
-            id: '1',
-            username: 'GachaFan2024',
-            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-            text: 'Me encanta la trama, ¡es increíble! 😍',
-            timestamp: 'Hace 2 días',
-            likes: 124,
-            userInteraction: 'like'
-        },
-        {
-            id: '2',
-            username: 'CinemaLover',
-            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka',
-            text: 'La edición de este video es otro nivel. Seiko siempre trayendo calidad.',
-            timestamp: 'Hace 1 semana',
-            likes: 89
-        },
-        {
-            id: '3',
-            username: 'MysteryWatcher',
-            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Milo',
-            text: '¿Alguien más notó el detalle en el minuto 3:45? 😱',
-            timestamp: 'Hace 3 semanas',
-            likes: 456
+const CommentsSection: React.FC<{ pageId: string }> = ({ pageId }) => {
+    useEffect(() => {
+        const scriptSrc = "https://talk.hyvor.com/embed/embed.js";
+        if (!document.querySelector(`script[src="${scriptSrc}"]`)) {
+            const script = document.createElement('script');
+            script.src = scriptSrc;
+            script.async = true;
+            script.type = "module";
+            document.body.appendChild(script);
         }
-    ]);
-    const [newComment, setNewComment] = useState('');
-    const [isFocused, setIsFocused] = useState(false);
-
-    const handleAddComment = () => {
-        if (!newComment.trim()) return;
-        
-        const comment: Comment = {
-            id: Date.now().toString(),
-            username: 'You',
-            avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=You',
-            text: newComment,
-            timestamp: 'Hace unos segundos',
-            likes: 0
-        };
-        
-        setComments([comment, ...comments]);
-        setNewComment('');
-        setIsFocused(false);
-    };
-
-    const handleLike = (id: string) => {
-        setComments(prevComments => prevComments.map(comment => {
-            if (comment.id === id) {
-                if (comment.userInteraction === 'like') {
-                    // Unlike
-                    return { ...comment, likes: comment.likes - 1, userInteraction: undefined };
-                } else {
-                    // Like (switch from dislike or fresh like)
-                    return { ...comment, likes: comment.likes + 1, userInteraction: 'like' };
-                }
-            }
-            return comment;
-        }));
-    };
-
-    const handleDislike = (id: string) => {
-        setComments(prevComments => prevComments.map(comment => {
-            if (comment.id === id) {
-                 if (comment.userInteraction === 'dislike') {
-                    // Remove dislike
-                    return { ...comment, userInteraction: undefined };
-                 } else if (comment.userInteraction === 'like') {
-                    // Switch from like to dislike
-                    return { ...comment, likes: comment.likes - 1, userInteraction: 'dislike' };
-                 } else {
-                    // Just dislike
-                    return { ...comment, userInteraction: 'dislike' };
-                 }
-            }
-            return comment;
-        }));
-    };
+    }, []);
 
     return (
-        <div className="mt-8 pt-6 border-t border-gray-800 px-4 md:px-0 max-w-5xl mx-auto">
-            <div className="flex items-center mb-6 space-x-8">
-                <h3 className="text-xl font-bold text-white">{comments.length} Comments</h3>
-                <div className="flex items-center space-x-2 text-gray-300 text-sm font-medium cursor-pointer hover:text-white">
-                    <SortIcon className="w-6 h-6" />
-                    <span>Sort by</span>
-                </div>
-            </div>
-
-            {/* Input Section */}
-            <div className="flex space-x-4 mb-8">
-                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=You" alt="User" className="w-10 h-10 rounded-full" />
-                <div className="flex-1">
-                    <div className="relative">
-                        <input 
-                            type="text" 
-                            value={newComment}
-                            onChange={(e) => setNewComment(e.target.value)}
-                            onFocus={() => setIsFocused(true)}
-                            placeholder="Add a comment..."
-                            className="w-full bg-transparent border-b border-gray-700 pb-1 text-white placeholder-gray-500 focus:outline-none focus:border-white transition-colors"
-                        />
-                         {/* Animated bottom border line */}
-                        <div className={`absolute bottom-0 left-0 h-[2px] bg-white transition-all duration-300 ease-in-out ${isFocused ? 'w-full' : 'w-0'}`}></div>
-                    </div>
-                    
-                    {isFocused && (
-                        <div className="flex justify-end space-x-3 mt-3">
-                            <button 
-                                onClick={() => {
-                                    setIsFocused(false);
-                                    setNewComment('');
-                                }}
-                                className="px-4 py-2 rounded-full text-sm font-medium hover:bg-gray-800 text-white transition-colors"
-                            >
-                                Cancel
-                            </button>
-                            <button 
-                                onClick={handleAddComment}
-                                disabled={!newComment.trim()}
-                                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${newComment.trim() ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-gray-800 text-gray-500 cursor-not-allowed'}`}
-                            >
-                                Comment
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* Comments List */}
-            <div className="space-y-6">
-                {comments.map(comment => (
-                    <div key={comment.id} className="flex space-x-4">
-                        <img src={comment.avatar} alt={comment.username} className="w-10 h-10 rounded-full flex-shrink-0" />
-                        <div className="flex-1">
-                            <div className="flex items-baseline space-x-2 mb-1">
-                                <span className="font-bold text-white text-sm">{comment.username}</span>
-                                <span className="text-gray-500 text-xs">{comment.timestamp}</span>
-                            </div>
-                            <p className="text-white text-sm leading-relaxed mb-2">{comment.text}</p>
-                            <div className="flex items-center space-x-4">
-                                <button 
-                                    onClick={() => handleLike(comment.id)}
-                                    className={`flex items-center space-x-1 group transition-colors ${comment.userInteraction === 'like' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
-                                >
-                                    <LikeIcon className="w-5 h-5 group-active:scale-90 transition-transform" />
-                                    <span className="text-xs font-medium">{comment.likes > 0 ? comment.likes : ''}</span>
-                                </button>
-                                <button 
-                                    onClick={() => handleDislike(comment.id)}
-                                    className={`group transition-colors ${comment.userInteraction === 'dislike' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
-                                >
-                                    <DislikeIcon className="w-5 h-5 group-active:scale-90 transition-transform" />
-                                </button>
-                                <button className="text-xs font-medium text-gray-400 hover:text-white rounded-full hover:bg-gray-800 px-3 py-1">
-                                    Reply
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
+        <div className="mt-8 pt-6 border-t border-gray-800 px-4 md:px-0 max-w-5xl mx-auto min-h-[300px]">
+            <hyvor-talk-comments
+                website-id="14533"
+                page-id={pageId}
+            ></hyvor-talk-comments>
         </div>
     );
 };
@@ -389,7 +233,7 @@ const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (url: stri
             </div>
             
             {/* Comments Section */}
-            <CommentsSection />
+            <CommentsSection pageId={content.id} />
         </div>
     </div>
 );

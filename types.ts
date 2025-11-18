@@ -22,4 +22,12 @@ export interface Comment {
   userInteraction?: 'like' | 'dislike';
 }
 
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      'hyvor-talk-comments': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement> & { 'website-id'?: string; 'page-id'?: string }, HTMLElement>;
+    }
+  }
+}
+
 // ChatMessage and GroundingChunk interfaces removed as they were only used by deactivated Gemini features.
