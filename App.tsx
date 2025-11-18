@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+// FIX: Import useState, useEffect, and useRef from React to resolve multiple 'Cannot find name' errors.
+import React, { useState, useEffect, useRef } from 'react';
 import { Content } from './types';
 import { MOCK_CONTENT } from './constants';
 // Gemini service imports removed as features are deactivated.
@@ -61,14 +62,14 @@ const Header: React.FC<{
     }, []);
     
     const navLinkClasses = (page: Page) => 
-        `cursor-pointer transition-colors relative after:content-[''] after:absolute after:left-0 after:bottom-[-4px] after:h-[2px] after:w-full after:bg-red-600 after:transition-transform after:duration-300 ${currentPage === page ? 'text-white font-bold after:scale-x-100' : 'text-gray-300 hover:text-white after:scale-x-0 hover:after:scale-x-100'}`;
+        `cursor-pointer transition-colors relative after:content-[''] after:absolute after:left-0 after:bottom-[-4px] after:h-[2px] after:w-full after:bg-red-500 after:transition-transform after:duration-300 ${currentPage === page ? 'text-white font-bold after:scale-x-100' : 'text-gray-300 hover:text-white after:scale-x-0 hover:after:scale-x-100'}`;
 
 
     return (
         <header className={`fixed top-0 left-0 right-0 z-40 transition-all duration-300 ${isScrolled ? 'bg-black/80 backdrop-blur-sm shadow-lg' : 'bg-transparent'}`}>
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16 md:h-20">
                 <div className="flex items-center space-x-8">
-                    <h1 className="text-3xl md:text-4xl text-red-600 font-bebas tracking-wider">SEIKOYT</h1>
+                    <h1 className="text-3xl md:text-4xl text-red-500 font-bebas tracking-wider">SEIKOYT</h1>
                     <nav className="hidden md:flex items-center space-x-6 font-medium">
                         <button onClick={() => onNavigate('home')} className={navLinkClasses('home')}>Home</button>
                         <button onClick={() => onNavigate('movies')} className={navLinkClasses('movies')}>Movies</button>
@@ -79,7 +80,7 @@ const Header: React.FC<{
                         href="https://www.patreon.com/c/SeikoVT?vanity=user" 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="flex items-center space-x-2 bg-red-600/90 text-white font-medium px-4 py-2 rounded-full hover:bg-red-600 transition-colors transform hover:scale-105"
+                        className="flex items-center space-x-2 border border-red-500 text-red-500 font-medium px-4 py-2 rounded-full hover:bg-red-500 hover:text-white transition-colors transform hover:scale-105"
                     >
                         <HeartIcon className="w-5 h-5" />
                         <span>Doname :)</span>
@@ -91,19 +92,21 @@ const Header: React.FC<{
 };
 
 const HeroBanner: React.FC<{ content: Content; onDetailsClick: () => void; onPlayClick: () => void }> = ({ content, onDetailsClick, onPlayClick }) => (
-    <div className="relative h-screen -mb-32 overflow-hidden">
-        <img src={content.backdropUrl} alt={content.title} className="absolute inset-0 w-full h-full object-cover animate-kenburns" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-transparent"></div>
-        <div className="relative z-10 h-full flex flex-col justify-end pb-40 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-2xl">
-                <h2 className="text-5xl md:text-7xl font-bebas text-white tracking-wide animate-fade-in-up opacity-0">{content.title}</h2>
-                <p className="mt-4 text-gray-200 text-lg max-w-lg animate-fade-in-up opacity-0 animate-fade-in-up-delay-1">{content.description}</p>
-                <div className="mt-6 flex space-x-4 animate-fade-in-up opacity-0 animate-fade-in-up-delay-2">
-                    <button onClick={onPlayClick} className="flex items-center bg-white text-black font-bold px-6 py-2.5 rounded-md hover:bg-gray-200 transition-all transform hover:scale-105">
+    <div className="relative h-screen -mb-40 overflow-hidden">
+        <div className="absolute inset-0 overflow-hidden">
+             <img src={content.backdropUrl} alt={content.title} className="w-full h-full object-cover animate-kenburns" />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent"></div>
+        <div className="relative z-10 h-full flex flex-col justify-end pb-52 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-3xl">
+                <h2 className="text-5xl md:text-7xl lg:text-8xl font-bebas text-white tracking-wide animate-fade-in-up">{content.title}</h2>
+                <p className="mt-4 text-gray-200 text-base md:text-lg max-w-xl animate-fade-in-up animate-fade-in-up-delay-1">{content.description}</p>
+                <div className="mt-8 flex space-x-4 animate-fade-in-up animate-fade-in-up-delay-2">
+                    <button onClick={onPlayClick} className="flex items-center bg-white/20 backdrop-blur-sm border border-white/30 text-white font-bold px-6 py-3 rounded-lg hover:bg-white/30 transition-all transform hover:scale-105">
                         <PlayIcon className="w-6 h-6 mr-2" />
                         Play
                     </button>
-                    <button onClick={onDetailsClick} className="flex items-center bg-gray-600/70 text-white font-bold px-6 py-2.5 rounded-md hover:bg-gray-600/90 transition-all transform hover:scale-105">
+                    <button onClick={onDetailsClick} className="flex items-center bg-black/20 backdrop-blur-sm border border-white/30 text-white font-bold px-6 py-3 rounded-lg hover:bg-white/40 transition-all transform hover:scale-105">
                         <InfoIcon className="w-6 h-6 mr-2" />
                         More Info
                     </button>
@@ -115,7 +118,7 @@ const HeroBanner: React.FC<{ content: Content; onDetailsClick: () => void; onPla
 
 const ContentCard: React.FC<{ content: Content; onCardClick: () => void }> = ({ content, onCardClick }) => (
     <div className="w-full group cursor-pointer" onClick={onCardClick}>
-        <div className="aspect-[2/3] overflow-hidden rounded-md transition-all duration-300 transform group-hover:scale-105 group-hover:shadow-2xl group-hover:shadow-red-800/30">
+        <div className="aspect-[2/3] overflow-hidden rounded-lg transition-all duration-300 transform group-hover:scale-105 group-hover:ring-2 ring-white/70">
             <img src={content.thumbnailUrl} alt={content.title} className="w-full h-full object-cover" />
         </div>
     </div>
@@ -123,7 +126,7 @@ const ContentCard: React.FC<{ content: Content; onCardClick: () => void }> = ({ 
 
 
 const ContentRow: React.FC<{ title: string; contents: Content[]; onCardClick: (content: Content) => void }> = ({ title, contents, onCardClick }) => (
-    <div className="mb-8">
+    <div className="mb-12">
         <h3 className="text-white text-xl md:text-2xl font-bold mb-4 px-4 sm:px-6 lg:px-8">{title}</h3>
         <div className="grid grid-flow-col auto-cols-[10rem] sm:auto-cols-[12rem] md:auto-cols-[14rem] gap-4 overflow-x-auto px-4 sm:px-6 lg:px-8 scrollbar-hide">
             {contents.map(content => (
@@ -134,8 +137,8 @@ const ContentRow: React.FC<{ title: string; contents: Content[]; onCardClick: (c
 );
 
 const MoviesPage: React.FC<{ contents: Content[]; onCardClick: (content: Content) => void }> = ({ contents, onCardClick }) => (
-    <div className="pt-24 pb-12 px-4 sm:px-6 lg:px-8">
-        <h2 className="text-3xl font-bold text-white mb-8">All Movies</h2>
+    <div className="pt-28 pb-16 px-4 sm:px-6 lg:px-8">
+        <h2 className="text-4xl font-bebas text-white mb-8">All Movies</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {contents.map(content => (
                 <ContentCard key={content.id} content={content} onCardClick={() => onCardClick(content)} />
@@ -144,16 +147,15 @@ const MoviesPage: React.FC<{ contents: Content[]; onCardClick: (content: Content
     </div>
 );
 
-const Modal: React.FC<{ children: React.ReactNode; onClose: () => void; title: string }> = ({ children, onClose, title }) => (
-    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in">
-        <div className="bg-[#141414] text-white rounded-lg overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col animate-scale-in">
-            <header className="flex items-center justify-between p-4 border-b border-gray-800 flex-shrink-0">
-                <h2 className="text-2xl font-bebas">{title}</h2>
-                <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors rounded-full p-1 hover:bg-gray-700">
+const Modal: React.FC<{ children: React.ReactNode; onClose: () => void }> = ({ children, onClose }) => (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+        <div className="bg-[#181818] text-white rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col animate-scale-in" onClick={e => e.stopPropagation()}>
+            <header className="flex items-center justify-end p-2 flex-shrink-0">
+                <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors rounded-full p-2 hover:bg-gray-800">
                     <CloseIcon className="w-6 h-6" />
                 </button>
             </header>
-            <div className="overflow-y-auto p-6">
+            <div className="overflow-y-auto px-8 pb-8">
                 {children}
             </div>
         </div>
@@ -162,36 +164,46 @@ const Modal: React.FC<{ children: React.ReactNode; onClose: () => void; title: s
 
 const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (url: string) => void; onPlayMovie: (url: string) => void }> = ({ content, onPlayTrailer, onPlayMovie }) => (
     <div>
-        <div className="relative aspect-video rounded-lg overflow-hidden mb-4">
+        <div className="relative aspect-video rounded-lg overflow-hidden -mt-12 mb-6">
             <img src={content.backdropUrl} alt={content.title} className="w-full h-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
-            <h2 className="absolute bottom-4 left-4 text-4xl font-bebas text-white">{content.title}</h2>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex flex-col justify-end p-6">
+                 <h2 className="text-5xl font-bebas text-white">{content.title}</h2>
+            </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="md:col-span-2">
-                <p className="text-gray-300">{content.description}</p>
-                <div className="mt-4 flex items-center space-x-4">
-                     <button
-                        onClick={() => content.videoUrl && onPlayMovie(content.videoUrl)}
-                        className="flex items-center bg-white text-black font-bold px-6 py-2.5 rounded-md hover:bg-gray-200 transition-all transform hover:scale-105"
-                    >
-                        <PlayIcon className="w-6 h-6 mr-2" />
-                        Play Movie
-                    </button>
-                    <button
-                        onClick={() => content.trailerUrl && onPlayTrailer(content.trailerUrl)}
-                        className="flex items-center bg-gray-600/70 text-white font-bold px-6 py-2.5 rounded-md hover:bg-gray-600/90 transition-all transform hover:scale-105"
-                    >
-                        <PlayIcon className="w-6 h-6 mr-2" />
-                        Play Trailer
-                    </button>
+                <div className="flex items-baseline space-x-4 mb-4 text-gray-400">
+                    <span className="font-bold text-green-400">97% Match</span>
+                    <span>{content.releaseYear}</span>
+                    <span className="border border-gray-500 px-1 text-sm">{content.rating}</span>
                 </div>
+                <p className="text-gray-300 leading-relaxed">{content.description}</p>
             </div>
             <div>
-                <p><span className="font-bold text-gray-500">Genres:</span> {content.genre.join(', ')}</p>
-                <p><span className="font-bold text-gray-500">Release Year:</span> {content.releaseYear}</p>
-                <p><span className="font-bold text-gray-500">Rating:</span> {content.rating}</p>
+                 <h3 className="text-gray-500 font-semibold mb-2">Genres</h3>
+                 <div className="flex flex-wrap gap-2">
+                    {content.genre.map(g => (
+                        <span key={g} className="bg-gray-800 text-gray-300 text-xs font-medium px-2.5 py-1 rounded-full">{g}</span>
+                    ))}
+                 </div>
             </div>
+        </div>
+         <div className="mt-8 pt-6 border-t border-gray-800 flex flex-wrap gap-4">
+            <button
+                onClick={() => content.videoUrl && onPlayMovie(content.videoUrl)}
+                className="flex items-center bg-white/20 backdrop-blur-sm border border-white/30 text-white font-bold px-6 py-3 rounded-lg hover:bg-white/30 transition-all transform hover:scale-105"
+            >
+                <PlayIcon className="w-6 h-6 mr-2" />
+                Play Movie
+            </button>
+            <button
+                onClick={() => content.trailerUrl && onPlayTrailer(content.trailerUrl)}
+                className="flex items-center bg-black/20 backdrop-blur-sm border border-white/30 text-white font-bold px-6 py-3 rounded-lg hover:bg-white/40 transition-all transform hover:scale-105"
+            >
+                <PlayIcon className="w-6 h-6 mr-2" />
+                Play Trailer
+            </button>
         </div>
     </div>
 );
@@ -232,7 +244,6 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
         const handleLoadedMetadata = () => {
             setDuration(video.duration);
              if (video.textTracks && video.textTracks.length > 0) {
-                // Ensure subtitles are loaded but hidden by default
                 video.textTracks[0].mode = 'hidden';
                 setAreSubtitlesVisible(false);
             }
@@ -310,7 +321,7 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
             <button onClick={onClose} className={`absolute top-4 right-4 text-white bg-black/50 p-2 rounded-full transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
                 <CloseIcon className="w-7 h-7" />
             </button>
-            <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
+            <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
                 <input type="range" min="0" max="100" value={progress} onChange={handleScrub} className="w-full h-1 bg-transparent rounded-lg appearance-none cursor-pointer video-progress" />
                 <div className="flex items-center justify-between mt-2 text-white">
                     <div className="flex items-center space-x-4">
@@ -327,7 +338,7 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
                             {showSpeedOptions && (
                                 <ul className="absolute bottom-full mb-2 right-0 bg-black/70 rounded-md py-1">
                                     {[0.5, 1, 1.5, 2].map(rate => (
-                                        <li key={rate}><button onClick={() => changePlaybackRate(rate)} className="px-4 py-1 hover:bg-red-600 w-full text-left text-sm">{rate}x</button></li>
+                                        <li key={rate}><button onClick={() => changePlaybackRate(rate)} className="px-4 py-1 hover:bg-red-500 w-full text-left text-sm">{rate}x</button></li>
                                     ))}
                                 </ul>
                             )}
@@ -346,7 +357,7 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
 
 export default function App() {
     const [currentPage, setCurrentPage] = useState<Page>('home');
-    const [activeModal, setActiveModal] = useState<'details' | null>(null);
+    const [activeModal, setActiveModal] = useState<boolean>(false);
     const [selectedContent, setSelectedContent] = useState<Content | null>(null);
     const [playingVideoUrl, setPlayingVideoUrl] = useState<string | null>(null);
 
@@ -355,24 +366,23 @@ export default function App() {
 
     const handleCardClick = (content: Content) => {
         setSelectedContent(content);
-        setActiveModal('details');
+        setActiveModal(true);
     };
     
     const handleHeroDetailsClick = () => {
         setSelectedContent(featuredContent);
-        setActiveModal('details');
+        setActiveModal(true);
     }
 
     const handlePlayClick = (url?: string) => {
         if (url) {
-            setActiveModal(null);
+            setActiveModal(false);
             setPlayingVideoUrl(url);
         }
     };
 
     const closeModal = () => {
-        setActiveModal(null);
-        // A small delay to allow the animation to finish before clearing content
+        setActiveModal(false);
         setTimeout(() => setSelectedContent(null), 300);
     };
     
@@ -390,7 +400,7 @@ export default function App() {
                             onDetailsClick={handleHeroDetailsClick} 
                             onPlayClick={() => handlePlayClick(featuredContent.videoUrl)}
                         />
-                        <div className="relative z-20 -mt-20">
+                        <div className="relative z-20 -mt-28">
                             {genres.map(genre => (
                                 <ContentRow
                                     key={genre}
@@ -406,12 +416,10 @@ export default function App() {
                 )}
             </main>
             
-            {/* Chatbot component, Search modal, and AI Studio modal removed as Gemini features are deactivated */}
-            
             {playingVideoUrl && <VideoPlayer src={playingVideoUrl} onClose={() => setPlayingVideoUrl(null)} />}
 
-            {activeModal === 'details' && selectedContent && (
-                <Modal onClose={closeModal} title="Details">
+            {activeModal && selectedContent && (
+                <Modal onClose={closeModal}>
                     <DetailModalContent 
                         content={selectedContent} 
                         onPlayTrailer={handlePlayClick}
