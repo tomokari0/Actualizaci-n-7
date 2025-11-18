@@ -221,6 +221,7 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
     const [showControls, setShowControls] = useState(true);
     const [showSpeedOptions, setShowSpeedOptions] = useState(false);
     const controlsTimeoutRef = useRef<number | null>(null);
+    const preMuteVolumeRef = useRef<number>(1);
     const VTT_TRACK_SRC = `data:text/vtt;base64,V0VCVlRUCgowMDowMDowMS4wMDAgLS0+IDAwOjAwOjA0LjAwMwpUaGlzIGlzIGEgc2FtcGxlIHN1YnRpdGxlIGZvciBkZW1vbnN0cmF0aW9uLgoKMDA6MDA6MDUuMDAwIC0tPiAwMDowMDowOS4wMDAKUGxheWJhY2sgc3BlZWQgYW5kIHN1YnRpdGxlcyBhcmUgbm93IGZ1bGx5IGZ1bmN0aW9uYWwu`;
 
 
@@ -261,6 +262,68 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
         };
     }, [src]);
 
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const video = videoRef.current;
+            if (!video) return;
+
+            if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
+                return;
+            }
+
+            if ([' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'm', 'M'].includes(e.key)) {
+                e.preventDefault();
+            }
+
+            switch (e.key) {
+                case ' ':
+                    setIsPlaying(prev => !prev);
+                    break;
+                case 'ArrowLeft':
+                    video.currentTime = Math.max(0, video.currentTime - 5);
+                    break;
+                case 'ArrowRight':
+                    video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5);
+                    break;
+                case 'ArrowUp':
+                    setVolume(currentVolume => {
+                        const newVolume = Math.min(1, currentVolume + 0.05);
+                        video.volume = newVolume;
+                        if (newVolume > 0) preMuteVolumeRef.current = newVolume;
+                        return newVolume;
+                    });
+                    break;
+                case 'ArrowDown':
+                    setVolume(currentVolume => {
+                        const newVolume = Math.max(0, currentVolume - 0.05);
+                        video.volume = newVolume;
+                        return newVolume;
+                    });
+                    break;
+                case 'm':
+                case 'M':
+                    setVolume(currentVolume => {
+                        if (currentVolume > 0) {
+                            preMuteVolumeRef.current = currentVolume;
+                            video.volume = 0;
+                            return 0;
+                        } else {
+                            const restoredVolume = preMuteVolumeRef.current > 0 ? preMuteVolumeRef.current : 1;
+                            video.volume = restoredVolume;
+                            return restoredVolume;
+                        }
+                    });
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
+
     const handleMouseMove = () => {
         setShowControls(true);
         hideControls();
@@ -284,6 +347,9 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
         const newVolume = Number(e.target.value);
         setVolume(newVolume);
         videoRef.current.volume = newVolume;
+        if (newVolume > 0) {
+            preMuteVolumeRef.current = newVolume;
+        }
     };
 
     const changePlaybackRate = (rate: number) => {
@@ -327,7 +393,21 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
                     <div className="flex items-center space-x-4">
                         <button onClick={togglePlayPause}>{isPlaying ? <PauseIcon className="w-7 h-7" /> : <PlayIcon className="w-7 h-7" />}</button>
                         <div className="flex items-center space-x-2">
-                            <button onClick={() => setVolume(v => v > 0 ? 0 : 1)}>{volume > 0 ? <VolumeUpIcon className="w-6 h-6" /> : <VolumeOffIcon className="w-6 h-6" />}</button>
+                            <button onClick={() => {
+                                const video = videoRef.current;
+                                if (!video) return;
+                                setVolume(currentVolume => {
+                                    if (currentVolume > 0) {
+                                        preMuteVolumeRef.current = currentVolume;
+                                        video.volume = 0;
+                                        return 0;
+                                    } else {
+                                        const restoredVolume = preMuteVolumeRef.current > 0 ? preMuteVolumeRef.current : 1;
+                                        video.volume = restoredVolume;
+                                        return restoredVolume;
+                                    }
+                                });
+                            }}>{volume > 0 ? <VolumeUpIcon className="w-6 h-6" /> : <VolumeOffIcon className="w-6 h-6" />}</button>
                             <input type="range" min="0" max="1" step="0.05" value={volume} onChange={handleVolumeChange} className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer" />
                         </div>
                         <span className="text-sm font-mono">{formatTime(currentTime)} / {formatTime(duration)}</span>
@@ -352,6 +432,14 @@ const VideoPlayer: React.FC<{ src: string; onClose: () => void }> = ({ src, onCl
     );
 };
 
+const Footer: React.FC = () => (
+    <footer className="bg-black py-8 mt-12 border-t border-gray-800/50">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-xs leading-relaxed">
+            <p>Copyright © 2025 - 2025 SeikoVT. 'SeikoYT', los logotipos de SeikoYT y el nombre pertenecen a SeikoVT.</p>
+            <p className="mt-1">Otros nombres o marcas son marcas registradas de sus respectivos dueños.</p>
+        </div>
+    </footer>
+);
 
 // --- TOP-LEVEL APP COMPONENT ---
 
@@ -427,6 +515,8 @@ export default function App() {
                     />
                 </Modal>
             )}
+
+            <Footer />
         </div>
     );
 }
