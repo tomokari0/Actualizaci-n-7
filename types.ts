@@ -1,7 +1,29 @@
 import React from 'react';
 
+
+export interface Episode {
+  id: string;
+  title: string;
+  description: string;
+  thumbnailUrl: string;
+  videoUrl: string;
+  duration: string; // e.g., "24m"
+  introStart?: number;
+  introEnd?: number;
+}
+
+
+export interface Season {
+  id: string;
+  seasonNumber: number;
+  title?: string; // Optional custom title for season
+  episodes: Episode[];
+}
+
+
 export interface Content {
   id: string;
+  type: 'movie' | 'series'; // Differentiator
   title: string;
   description: string;
   thumbnailUrl: string;
@@ -10,11 +32,19 @@ export interface Content {
   rating: string;
   releaseYear: number;
   featured?: boolean;
+ 
+  // Movie specific (or default fallback)
   videoUrl?: string;
-  trailerUrl?: string;
   introStart?: number;
   introEnd?: number;
+ 
+  // Series specific
+  seasons?: Season[];
+
+
+  trailerUrl?: string;
 }
+
 
 export interface Comment {
   id: string;
@@ -26,4 +56,6 @@ export interface Comment {
   userInteraction?: 'like' | 'dislike';
 }
 
+
 // ChatMessage and GroundingChunk interfaces removed as they were only used by deactivated Gemini features.
+
