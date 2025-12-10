@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, createContext, useContext } from 'react';
+import React, { useState, useEffect, useRef, createContext, useContext, useMemo, useCallback } from 'react';
 import { Content, Episode } from './types';
 import { MOCK_CONTENT, LANGUAGES, TRANSLATIONS } from './constants';
 // Gemini service imports removed as features are deactivated.
@@ -40,10 +40,12 @@ export const useLanguage = () => useContext(LanguageContext);
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [currentLanguage, setCurrentLanguage] = useState('en');
 
-    const t = (key: string) => {
-        const langData = TRANSLATIONS[currentLanguage] || TRANSLATIONS['en'];
-        return langData[key] || TRANSLATIONS['en'][key] || key;
-    };
+    // Memoize translations map to prevent recreation on every render
+    const translations = useMemo(() => TRANSLATIONS[currentLanguage] || TRANSLATIONS['en'], [currentLanguage]);
+
+    const t = useCallback((key: string) => {
+        return translations[key] || TRANSLATIONS['en'][key] || key;
+    }, [translations]);
 
     // Handle RTL for Arabic
     useEffect(() => {
@@ -51,8 +53,10 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         document.documentElement.lang = currentLanguage;
     }, [currentLanguage]);
 
+    const value = useMemo(() => ({ currentLanguage, setLanguage: setCurrentLanguage, t }), [currentLanguage, t]);
+
     return (
-        <LanguageContext.Provider value={{ currentLanguage, setLanguage: setCurrentLanguage, t }}>
+        <LanguageContext.Provider value={value}>
             {children}
         </LanguageContext.Provider>
     );
@@ -95,21 +99,23 @@ export const WatchlistProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         }
     }, [watchlist]);
 
-    const addToWatchlist = (id: string) => {
+    const addToWatchlist = useCallback((id: string) => {
         setWatchlist(prev => {
             if (!prev.includes(id)) return [...prev, id];
             return prev;
         });
-    };
+    }, []);
 
-    const removeFromWatchlist = (id: string) => {
+    const removeFromWatchlist = useCallback((id: string) => {
         setWatchlist(prev => prev.filter(itemId => itemId !== id));
-    };
+    }, []);
 
-    const isInWatchlist = (id: string) => watchlist.includes(id);
+    const isInWatchlist = useCallback((id: string) => watchlist.includes(id), [watchlist]);
+
+    const value = useMemo(() => ({ watchlist, addToWatchlist, removeFromWatchlist, isInWatchlist }), [watchlist, addToWatchlist, removeFromWatchlist, isInWatchlist]);
 
     return (
-        <WatchlistContext.Provider value={{ watchlist, addToWatchlist, removeFromWatchlist, isInWatchlist }}>
+        <WatchlistContext.Provider value={value}>
             {children}
         </WatchlistContext.Provider>
     );
@@ -176,119 +182,112 @@ export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
     }, [watchProgress]);
 
-    const addToHistory = (id: string) => {
+    const addToHistory = useCallback((id: string) => {
         setHistory(prev => {
             // Remove if already exists to move it to the end (most recent)
             const filtered = prev.filter(itemId => itemId !== id);
             return [...filtered, id];
         });
-    };
+    }, []);
 
-    const updateProgress = (id: string, currentTime: number, duration: number) => {
+    const updateProgress = useCallback((id: string, currentTime: number, duration: number) => {
         setWatchProgress(prev => ({
             ...prev,
             [id]: { currentTime, duration, lastWatched: Date.now() }
         }));
-    };
+    }, []);
+
+    const value = useMemo(() => ({ history, watchProgress, addToHistory, updateProgress }), [history, watchProgress, addToHistory, updateProgress]);
 
     return (
-        <UserHistoryContext.Provider value={{ history, watchProgress, addToHistory, updateProgress }}>
+        <UserHistoryContext.Provider value={value}>
             {children}
         </UserHistoryContext.Provider>
     );
 };
 
 // --- ICONS ---
-
-const PlayIcon: React.FC<{ className?: string }> = ({ className }) => (
+// Memoize icons to prevent re-renders (though they are light, it's good practice)
+const PlayIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg>
-);
-const PauseIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const PauseIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
-);
-const VolumeUpIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const VolumeUpIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"></path></svg>
-);
-const VolumeOffIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const VolumeOffIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"></path></svg>
-);
-const SubtitlesIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const SubtitlesIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"></path></svg>
-);
-const FullscreenIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const FullscreenIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"></path></svg>
-);
-const InfoIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const InfoIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"></path></svg>
-);
-const CloseIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const CloseIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
-);
-const HeartIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const HeartIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
-);
-const SettingsIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const SettingsIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c.59-.24 1.13.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.11-.22.06-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"></path></svg>
-);
-const MinimizeIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const MinimizeIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"></path></svg>
-);
-const ExpandIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const ExpandIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H3V5h18v14z"></path></svg>
-);
-const SearchIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const SearchIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"></path></svg>
-);
-const UploadIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"></path></svg>
-);
-const CheckCircleIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const CheckCircleIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"></path></svg>
-);
-const GlobeIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const GlobeIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"></path></svg>
-);
-const PlusIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const PlusIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"></path></svg>
-);
-const CheckIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const CheckIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"></path></svg>
 );
-const PhoneIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-2.2 2.2c-2.83-1.44-5.15-3.75-6.59-6.59l2.2-2.21c.28-.26.36-.65.25-1.01A11.36 11.36 0 0 1 8.59 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 17 17 0 0 0 17 17c.55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1zM12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
-);
-const PiPIcon: React.FC<{ className?: string }> = ({ className }) => (
+const PiPIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 1.98 2 1.98h18c1.1 0 2-.88 2-1.98V5c0-1.1-.9-2-2-2zm0 16.01H3V4.97h18v14.04z"></path></svg>
-);
-const MessageIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"></path></svg>
-);
-const SendIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-);
-const ShareIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const ShareIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.66 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"></path></svg>
-);
+));
+const PhoneIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-2.2 2.2c-2.83-1.44-5.15-3.75-6.59-6.59l2.2-2.21c.28-.26.36-.65.25-1.01A11.36 11.36 0 0 1 8.59 4c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1 17 17 0 0 0 17 17c.55 0 1-.45 1-1v-3.5c0-.55-.45-1-1-1zM12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+));
 
 // Social Icons
-const YouTubeIcon: React.FC<{ className?: string }> = ({ className }) => (
+const YouTubeIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
   <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-label="YouTube"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/></svg>
-);
-const InstagramIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const InstagramIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
   <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-label="Instagram"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
-);
-const TikTokIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const TikTokIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-label="TikTok"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 1 0-1 13.6 6.84 6.84 0 0 0 6.45-6.84V6.76a7.69 7.69 0 0 0 4.25 1.74v-3.4a4.39 4.39 0 0 1-0.47-0.41z"/></svg>
-);
-const TwitchIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const TwitchIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-label="Twitch"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg>
-);
-const DiscordIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const DiscordIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-label="Discord"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561 19.9035 19.9035 0 005.9937 3.0314.0777.0777 0 00.0842-.0276 14.1847 14.1847 0 001.2262-1.9942.076.076 0 00-.0416-.1057 13.0843 13.0843 0 01-1.872-1.022.0766.0766 0 01-.0076-.1277 10.7495 10.7495 0 00.3718-.2917.0754.0754 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0738.0738 0 01.0785.0095c.1202.0984.246.1983.3728.2925a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873 1.022.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286 19.839 19.839 0 006.0028-3.0314.077.077 0 00.0322-.0543c.4928-5.1774-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z"/></svg>
-);
-const TwitterIcon: React.FC<{ className?: string }> = ({ className }) => (
+));
+const TwitterIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-label="X (Twitter)"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
-);
+));
 
 
 
@@ -309,32 +308,10 @@ const LoadingOverlay: React.FC = () => (
 );
 
 
-const SplashScreen: React.FC<{ onFinish: () => void }> = ({ onFinish }) => {
-    const [isFading, setIsFading] = useState(false);
-
-    const handleVideoEnded = () => {
-        setIsFading(true);
-        setTimeout(() => {
-            onFinish();
-        }, 1000); // 1s transition duration matches duration-1000
-    };
-
-    return (
-        <div className={`fixed inset-0 z-[100] bg-black flex items-center justify-center transition-opacity duration-1000 ease-in-out ${isFading ? 'opacity-0' : 'opacity-100'}`}>
-            <video
-                src="https://2qhd7azteo.ucarecd.net/e940ebf2-0e5c-4606-9ece-625bc6e9a126/Diseosinttulo.mp4"
-                className="w-full h-full object-cover"
-                autoPlay
-                muted
-                playsInline
-                onEnded={handleVideoEnded}
-            />
-        </div>
-    );
-};
+// Removed SplashScreen as requested
 
 
-type Page = 'home' | 'movies' | 'search' | 'upload' | 'watchlist' | 'calls' | 'messages';
+type Page = 'home' | 'movies' | 'search' | 'watchlist' | 'calls';
 
 
 const LanguageSelector: React.FC = () => {
@@ -416,8 +393,6 @@ const Header: React.FC<{
                         <button onClick={() => onNavigate('movies')} className={navLinkClasses('movies')}>{t('movies')}</button>
                         <button onClick={() => onNavigate('watchlist')} className={navLinkClasses('watchlist')}>{t('myList')}</button>
                         <button onClick={() => onNavigate('calls')} className={navLinkClasses('calls')}>{t('calls')}</button>
-                        <button onClick={() => onNavigate('messages')} className={navLinkClasses('messages')}>{t('messages')}</button>
-                        <button onClick={() => onNavigate('upload')} className={navLinkClasses('upload')}>{t('creators')}</button>
                     </nav>
                 </div>
                 <div className="flex items-center space-x-4">
@@ -442,20 +417,6 @@ const Header: React.FC<{
                         aria-label="Calls"
                     >
                          <PhoneIcon className="w-6 h-6" />
-                    </button>
-                    <button
-                        onClick={() => onNavigate('messages')}
-                        className="lg:hidden text-gray-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-red-500 rounded p-1"
-                        aria-label="Messages"
-                    >
-                         <MessageIcon className="w-6 h-6" />
-                    </button>
-                    <button
-                        onClick={() => onNavigate('upload')}
-                        className="lg:hidden text-gray-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-red-500 rounded p-1"
-                        aria-label="Upload Content"
-                    >
-                        <UploadIcon className="w-6 h-6" />
                     </button>
                     <a
                         href="https://www.patreon.com/c/SeikoVT?vanity=user"
@@ -489,7 +450,7 @@ const HeroBanner: React.FC<{ content: Content; onDetailsClick: () => void; onPla
     return (
         <div className="relative h-screen -mb-40 overflow-hidden">
             <div className="absolute inset-0 overflow-hidden">
-                <img src={content.backdropUrl} alt="" role="presentation" className="w-full h-full object-cover animate-kenburns" />
+                <img src={content.backdropUrl} alt="" role="presentation" className="w-full h-full object-cover animate-kenburns" loading="lazy" />
             </div>
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-transparent"></div>
             <div className="relative z-10 h-full flex flex-col justify-end pb-52 px-4 sm:px-6 lg:px-8">
@@ -519,14 +480,15 @@ const HeroBanner: React.FC<{ content: Content; onDetailsClick: () => void; onPla
 
 
 
-const ContentCard: React.FC<{ content: Content; onCardClick: () => void; progress?: number }> = ({ content, onCardClick, progress }) => (
+// Memoize ContentCard to prevent re-renders on every scroll or minor state change
+const ContentCard: React.FC<{ content: Content; onCardClick: () => void; progress?: number }> = React.memo(({ content, onCardClick, progress }) => (
     <button 
         className="w-full group text-left block focus:outline-none focus:ring-2 focus:ring-red-500 rounded-lg" 
         onClick={onCardClick}
         aria-label={`View details for ${content.title}`}
     >
         <div className="aspect-[2/3] overflow-hidden rounded-lg transition-all duration-300 transform group-hover:scale-105 group-hover:ring-2 ring-white/70 relative">
-            <img src={content.thumbnailUrl} alt={content.title} className="w-full h-full object-cover" />
+            <img src={content.thumbnailUrl} alt={content.title} className="w-full h-full object-cover" loading="lazy" />
             {progress !== undefined && progress > 0 && progress < 100 && (
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-600">
                     <div className="h-full bg-red-600" style={{ width: `${progress}%` }}></div>
@@ -534,7 +496,7 @@ const ContentCard: React.FC<{ content: Content; onCardClick: () => void; progres
             )}
         </div>
     </button>
-);
+));
 
 
 
@@ -543,7 +505,8 @@ const ContentCard: React.FC<{ content: Content; onCardClick: () => void; progres
 
 
 
-const ContentRow: React.FC<{ title: string; contents: Content[]; onCardClick: (content: Content) => void; getProgress?: (id: string) => number }> = ({ title, contents, onCardClick, getProgress }) => (
+// Memoize ContentRow to avoid re-rendering entire rows when only one row changes or on scroll
+const ContentRow: React.FC<{ title: string; contents: Content[]; onCardClick: (content: Content) => void; getProgress?: (id: string) => number }> = React.memo(({ title, contents, onCardClick, getProgress }) => (
     <div className="mb-12">
         <h3 className="text-white text-xl md:text-2xl font-bold mb-4 px-4 sm:px-6 lg:px-8">{title}</h3>
         <div className="grid grid-flow-col auto-cols-[10rem] sm:auto-cols-[12rem] md:auto-cols-[14rem] gap-4 overflow-x-auto px-4 sm:px-6 lg:px-8 scrollbar-hide">
@@ -557,7 +520,7 @@ const ContentRow: React.FC<{ title: string; contents: Content[]; onCardClick: (c
             ))}
         </div>
     </div>
-);
+));
 
 
 
@@ -614,7 +577,7 @@ const WatchlistPage: React.FC<{ onCardClick: (content: Content) => void }> = ({ 
     const { watchlist } = useWatchlist();
     
     // Filter global content based on saved IDs
-    const savedContent = MOCK_CONTENT.filter(c => watchlist.includes(c.id));
+    const savedContent = useMemo(() => MOCK_CONTENT.filter(c => watchlist.includes(c.id)), [watchlist]);
 
     return (
         <div className="pt-28 pb-16 px-4 sm:px-6 lg:px-8 min-h-screen">
@@ -631,396 +594,6 @@ const WatchlistPage: React.FC<{ onCardClick: (content: Content) => void }> = ({ 
                     <p className="text-xl">{t('emptyWatchlist')}</p>
                 </div>
             )}
-        </div>
-    );
-};
-
-const UploadPage: React.FC = () => {
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [submitted, setSubmitted] = useState(false);
-    const [errorMsg, setErrorMsg] = useState("");
-    const { t } = useLanguage();
-    const [formData, setFormData] = useState({
-        title: '',
-        description: '',
-        thumbnailUrl: '',
-        videoUrl: '',
-        type: 'movie',
-        genre: ''
-    });
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        setErrorMsg("");
-
-        // ---------------------------------------------------------
-        // INSTRUCCIONES:
-        // 1. Ve a https://formspree.io/ y regístrate.
-        // 2. Crea un nuevo formulario y obtén el ID del formulario.
-        // 3. Reemplaza "TU_ID_DE_FORMSPREE_AQUI" con tu ID real (ej. "xkqjbdzp").
-        // ---------------------------------------------------------
-        const FORMSPREE_ID = "TU_ID_DE_FORMSPREE_AQUI"; 
-
-        if (FORMSPREE_ID === "TU_ID_DE_FORMSPREE_AQUI") {
-            alert("⚠️ ATENCIÓN: Debes configurar tu ID de Formspree en el código del componente UploadPage para que esto funcione.");
-            setIsSubmitting(false);
-            return;
-        }
-
-        try {
-            const response = await fetch(`https://formspree.io/f/${FORMSPREE_ID}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            });
-
-            if (response.ok) {
-                setSubmitted(true);
-                // Reset form
-                setFormData({
-                    title: '',
-                    description: '',
-                    thumbnailUrl: '',
-                    videoUrl: '',
-                    type: 'movie',
-                    genre: ''
-                });
-            } else {
-                const data = await response.json();
-                if (Object.prototype.hasOwnProperty.call(data, 'errors')) {
-                    setErrorMsg(data["errors"].map((error: any) => error["message"]).join(", "));
-                } else {
-                    setErrorMsg("Oops! There was a problem submitting your form");
-                }
-            }
-        } catch (error) {
-            setErrorMsg("Error connecting to server. Please try again.");
-            console.error("Submission error:", error);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    if (submitted) {
-        return (
-            <div className="pt-32 pb-16 px-4 sm:px-6 lg:px-8 min-h-screen flex items-center justify-center">
-                <div className="text-center max-w-lg bg-white/5 p-8 rounded-2xl border border-green-500/30 backdrop-blur-sm animate-scale-in">
-                    <CheckCircleIcon className="w-20 h-20 text-green-500 mx-auto mb-6" />
-                    <h2 className="text-3xl font-bebas text-white mb-4">{t('submissionReceived')}</h2>
-                    <p className="text-gray-300 mb-8">
-                        {t('thankYou')}
-                    </p>
-                    <button 
-                        onClick={() => setSubmitted(false)}
-                        className="bg-white text-black font-bold px-8 py-3 rounded-full hover:bg-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-white"
-                    >
-                        {t('uploadAnother')}
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="pt-28 pb-16 px-4 sm:px-6 lg:px-8 min-h-screen">
-            <div className="max-w-2xl mx-auto">
-                <div className="text-center mb-10">
-                    <h2 className="text-4xl md:text-5xl font-bebas text-white mb-2 text-red-500">{t('creatorStudio')}</h2>
-                    <p className="text-gray-400">{t('submitText')}</p>
-                </div>
-
-                <form onSubmit={handleSubmit} className="bg-white/5 p-6 md:p-8 rounded-2xl border border-white/10 backdrop-blur-sm space-y-6">
-                    {errorMsg && (
-                        <div className="bg-red-500/20 border border-red-500 text-red-200 px-4 py-3 rounded">
-                            {errorMsg}
-                        </div>
-                    )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                            <label htmlFor="title" className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('title')}</label>
-                            <input 
-                                id="title"
-                                required 
-                                type="text" 
-                                name="title"
-                                value={formData.title}
-                                onChange={handleChange}
-                                placeholder="Movie Title" 
-                                className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-colors focus:ring-1 focus:ring-red-500" 
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label htmlFor="type" className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('type')}</label>
-                            <select 
-                                id="type"
-                                name="type"
-                                value={formData.type}
-                                onChange={handleChange}
-                                className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-colors appearance-none focus:ring-1 focus:ring-red-500"
-                            >
-                                <option value="movie">{t('movie')}</option>
-                                <option value="series">{t('series')}</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label htmlFor="description" className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('description')}</label>
-                        <textarea 
-                            id="description"
-                            required 
-                            name="description"
-                            value={formData.description}
-                            onChange={handleChange}
-                            rows={4} 
-                            placeholder="What is your story about?" 
-                            className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-colors resize-none focus:ring-1 focus:ring-red-500"
-                        ></textarea>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                         <div className="space-y-2">
-                            <label htmlFor="genre" className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('genre')}</label>
-                            <input 
-                                id="genre"
-                                required 
-                                type="text" 
-                                name="genre"
-                                value={formData.genre}
-                                onChange={handleChange}
-                                placeholder="Action, Drama, Sci-Fi" 
-                                className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-colors focus:ring-1 focus:ring-red-500" 
-                            />
-                        </div>
-                         <div className="space-y-2">
-                            <label htmlFor="videoUrl" className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('videoUrl')}</label>
-                            <input 
-                                id="videoUrl"
-                                required 
-                                type="url" 
-                                name="videoUrl"
-                                value={formData.videoUrl}
-                                onChange={handleChange}
-                                placeholder="https://example.com/video.mp4" 
-                                className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-colors focus:ring-1 focus:ring-red-500" 
-                            />
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label htmlFor="thumbnailUrl" className="text-xs font-bold text-gray-400 uppercase tracking-wider">{t('thumbnailUrl')}</label>
-                        <input 
-                            id="thumbnailUrl"
-                            required 
-                            type="url" 
-                            name="thumbnailUrl"
-                            value={formData.thumbnailUrl}
-                            onChange={handleChange}
-                            placeholder="https://example.com/image.jpg" 
-                            className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-colors focus:ring-1 focus:ring-red-500" 
-                        />
-                         <p className="text-xs text-gray-500">Use a high-quality image hosted on ImageKit, Imgur, or similar services.</p>
-                    </div>
-
-                    <div className="pt-4">
-                        <button 
-                            type="submit" 
-                            disabled={isSubmitting}
-                            className={`w-full font-bold text-lg py-4 rounded-lg transition-all transform hover:scale-[1.02] flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-white ${isSubmitting ? 'bg-gray-600 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-600/20'}`}
-                        >
-                            {isSubmitting ? (
-                                <>
-                                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
-                                    {t('submitting')}
-                                </>
-                            ) : (
-                                <>
-                                    <UploadIcon className="w-6 h-6 mr-2" />
-                                    {t('submitBtn')}
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-const CONTACTS = [
-    { id: '1', name: 'Seiko', avatar: 'https://ik.imagekit.io/gzrwng096/RH%20Nulo/maxresdefault%20(2).jpg?updatedAt=1751921520460', online: true },
-    { id: '2', name: 'Gabi', avatar: 'https://picsum.photos/seed/gabi/200', online: true },
-    { id: '3', name: 'Admin', avatar: 'https://picsum.photos/seed/admin/200', online: false },
-    { id: '4', name: 'Soporte', avatar: 'https://picsum.photos/seed/support/200', online: true },
-];
-
-interface Message {
-    id: string;
-    text: string;
-    sender: 'me' | 'other';
-    timestamp: Date;
-}
-
-const MessagesPage: React.FC = () => {
-    const { t } = useLanguage();
-    const [selectedContactId, setSelectedContactId] = useState<string>(CONTACTS[0].id);
-    const [messages, setMessages] = useState<Record<string, Message[]>>({});
-    const [inputText, setInputText] = useState('');
-    const chatContainerRef = useRef<HTMLDivElement>(null);
-
-    const selectedContact = CONTACTS.find(c => c.id === selectedContactId);
-
-    // Scroll to bottom on new message
-    useEffect(() => {
-        if (chatContainerRef.current) {
-            chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        }
-    }, [messages, selectedContactId]);
-
-    const handleSendMessage = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!inputText.trim()) return;
-
-        const newMessage: Message = {
-            id: Date.now().toString(),
-            text: inputText,
-            sender: 'me',
-            timestamp: new Date()
-        };
-
-        setMessages(prev => ({
-            ...prev,
-            [selectedContactId]: [...(prev[selectedContactId] || []), newMessage]
-        }));
-        
-        setInputText('');
-
-        // Simulate reply
-        setTimeout(() => {
-            const reply: Message = {
-                id: (Date.now() + 1).toString(),
-                text: getMockReply(selectedContact?.name || 'User'),
-                sender: 'other',
-                timestamp: new Date()
-            };
-            setMessages(prev => ({
-                ...prev,
-                [selectedContactId]: [...(prev[selectedContactId] || []), reply]
-            }));
-        }, 1500 + Math.random() * 2000);
-    };
-
-    const getMockReply = (name: string) => {
-        const replies = [
-            `Hola! Gracias por escribirme. ${name} te responderá pronto.`,
-            "¡Qué interesante! Cuéntame más.",
-            "Jaja, eso es gracioso.",
-            "Ahora estoy ocupado editando, pero lo veré luego.",
-            "👍",
-            "¿Has visto mi último video?"
-        ];
-        return replies[Math.floor(Math.random() * replies.length)];
-    };
-
-    return (
-        <div className="pt-20 pb-16 px-4 sm:px-6 lg:px-8 h-screen flex flex-col">
-            <div className="flex-1 flex overflow-hidden bg-[#121212] border border-gray-800 rounded-2xl max-w-6xl mx-auto w-full shadow-2xl">
-                {/* Sidebar */}
-                <div className={`w-full md:w-80 bg-black/50 border-r border-gray-800 flex flex-col ${selectedContactId ? 'hidden md:flex' : 'flex'}`}>
-                    <div className="p-4 border-b border-gray-800">
-                        <h2 className="text-xl font-bold text-white font-bebas tracking-wide">{t('contacts')}</h2>
-                    </div>
-                    <div className="flex-1 overflow-y-auto">
-                        {CONTACTS.map(contact => (
-                            <button 
-                                key={contact.id}
-                                onClick={() => setSelectedContactId(contact.id)}
-                                className={`flex items-center w-full text-left p-4 cursor-pointer hover:bg-white/5 transition-colors focus:outline-none focus:bg-white/10 ${selectedContactId === contact.id ? 'bg-white/10' : ''}`}
-                            >
-                                <div className="relative">
-                                    <img src={contact.avatar} alt="" className="w-12 h-12 rounded-full object-cover" />
-                                    {contact.online && <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-black" aria-label="Online"></div>}
-                                </div>
-                                <div className="ml-4 flex-1">
-                                    <h3 className="text-white font-medium">{contact.name}</h3>
-                                    <p className="text-gray-400 text-sm truncate">
-                                        {messages[contact.id]?.slice(-1)[0]?.text || t('recent')}
-                                    </p>
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Chat Area */}
-                {selectedContact ? (
-                    <div className={`flex-1 flex flex-col bg-[#0a0a0a] ${!selectedContactId ? 'hidden md:flex' : 'flex'}`}>
-                        {/* Chat Header */}
-                        <div className="p-4 border-b border-gray-800 flex items-center">
-                            <button className="md:hidden mr-4 text-gray-400 focus:outline-none focus:text-white" onClick={() => setSelectedContactId('')} aria-label="Back to contacts">
-                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                            </button>
-                            <img src={selectedContact.avatar} alt="" className="w-10 h-10 rounded-full object-cover" />
-                            <div className="ml-3">
-                                <h3 className="text-white font-bold">{selectedContact.name}</h3>
-                                <p className="text-green-500 text-xs">{selectedContact.online ? t('online') : ''}</p>
-                            </div>
-                        </div>
-
-                        {/* Messages */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={chatContainerRef}>
-                            {!messages[selectedContact.id] || messages[selectedContact.id].length === 0 ? (
-                                <div className="h-full flex items-center justify-center text-gray-600 text-sm">
-                                    Say hello to {selectedContact.name}!
-                                </div>
-                            ) : (
-                                messages[selectedContact.id].map((msg) => (
-                                    <div key={msg.id} className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
-                                        <div className={`max-w-[75%] rounded-2xl px-4 py-2 ${msg.sender === 'me' ? 'bg-red-600 text-white rounded-br-none' : 'bg-gray-800 text-gray-200 rounded-bl-none'}`}>
-                                            <p>{msg.text}</p>
-                                            <span className="text-[10px] opacity-70 block text-right mt-1">
-                                                {msg.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                            </span>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-
-                        {/* Input */}
-                        <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-800 flex items-center space-x-2">
-                            <label htmlFor="message-input" className="sr-only">{t('typeMessage')}</label>
-                            <input
-                                id="message-input"
-                                type="text"
-                                value={inputText}
-                                onChange={(e) => setInputText(e.target.value)}
-                                placeholder={t('typeMessage')}
-                                className="flex-1 bg-gray-900 border border-gray-700 text-white rounded-full px-4 py-2 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors"
-                            />
-                            <button 
-                                type="submit" 
-                                disabled={!inputText.trim()}
-                                className="bg-red-600 text-white p-2 rounded-full hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-red-500"
-                                aria-label="Send message"
-                            >
-                                <SendIcon className="w-5 h-5" />
-                            </button>
-                        </form>
-                    </div>
-                ) : (
-                    <div className="hidden md:flex flex-1 items-center justify-center text-gray-500">
-                        Select a contact to start chatting
-                    </div>
-                )}
-            </div>
         </div>
     );
 };
@@ -1187,6 +760,43 @@ const CallsPage: React.FC = () => {
     );
 };
 
+const ChangelogModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const { t } = useLanguage();
+    const changelogData = [
+        { date: '2024-05-20', change: 'Optimized video playback for smoother streaming.' },
+        { date: '2024-05-18', change: 'Added new movies: "Mi chico malo", "Amor de Cupido", "Desde pequeños..."' },
+        { date: '2024-05-15', change: 'Added "Continue Watching" section.' },
+        { date: '2024-05-10', change: 'Restored Community Calls feature.' },
+    ];
+
+    return (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose} role="dialog" aria-modal="true">
+            <div className="bg-[#181818] text-white rounded-xl overflow-hidden w-full max-w-lg flex flex-col animate-scale-in border border-gray-800" onClick={e => e.stopPropagation()}>
+                <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+                    <h3 className="text-xl font-bold font-bebas tracking-wide text-red-500">{t('changelogTitle')}</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors focus:outline-none" aria-label="Close">
+                        <CloseIcon className="w-6 h-6" />
+                    </button>
+                </div>
+                <div className="p-6 overflow-y-auto max-h-[60vh]">
+                    <ul className="space-y-4">
+                        {changelogData.map((item, index) => (
+                            <li key={index} className="border-l-2 border-red-500 pl-4">
+                                <span className="block text-xs text-gray-500 font-bold mb-1">{item.date}</span>
+                                <p className="text-gray-300 text-sm">{item.change}</p>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+                <div className="p-4 border-t border-gray-800 bg-black/20 text-right">
+                    <button onClick={onClose} className="text-sm font-bold text-white hover:text-red-500 transition-colors">
+                        {t('close')}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const Modal: React.FC<{ children: React.ReactNode; onClose: () => void }> = ({ children, onClose }) => (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={onClose} role="dialog" aria-modal="true">
@@ -1265,7 +875,7 @@ const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (id: strin
     return (
         <div className="pb-12">
             <div className="relative aspect-video w-full">
-                <img src={content.backdropUrl} alt={content.title} className="w-full h-full object-cover" />
+                <img src={content.backdropUrl} alt={content.title} className="w-full h-full object-cover" loading="lazy" />
                 <div className="absolute inset-0 bg-gradient-to-t from-[#181818] via-transparent to-transparent"></div>
                 <div className="absolute bottom-0 left-0 p-8 w-full">
                      <h2 className="text-5xl font-bebas text-white drop-shadow-lg">{content.title}</h2>
@@ -1343,7 +953,7 @@ const DetailModalContent: React.FC<{ content: Content; onPlayTrailer: (id: strin
                                             onClick={() => onPlayMovie(content.id, episode.videoUrl, episode.title, episode.description, episode.introStart, episode.introEnd)}
                                         >
                                             <div className="relative w-full sm:w-40 aspect-video flex-shrink-0 mb-2 sm:mb-0 sm:mr-4 overflow-hidden rounded">
-                                                <img src={episode.thumbnailUrl} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                                                <img src={episode.thumbnailUrl} alt="" className="w-full h-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
                                                 <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/10 transition-colors">
                                                     <PlayIcon className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                                                 </div>
@@ -1417,6 +1027,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ id, src, title, description, 
     const [showQualityOptions, setShowQualityOptions] = useState(false);
     const [showShareTooltip, setShowShareTooltip] = useState(false); // State for share tooltip feedback
     const [showSkipIntro, setShowSkipIntro] = useState(false);
+    // Optimization: Buffering state
+    const [isBuffering, setIsBuffering] = useState(false);
+
     const controlsTimeoutRef = useRef<number | null>(null);
     const preMuteVolumeRef = useRef<number>(1);
     const { addToHistory, watchProgress, updateProgress } = useUserHistory(); // Hook to add to watch history and progress
@@ -1441,7 +1054,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ id, src, title, description, 
         }
     }, [id, addToHistory]); // Don't depend on watchProgress to avoid loops, stick to mount/id change
 
-    // Save Progress Logic
+    // Save Progress Logic & Buffering Events
     useEffect(() => {
         const video = videoRef.current;
         
@@ -1451,6 +1064,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ id, src, title, description, 
             }
         };
 
+        const handleWaiting = () => setIsBuffering(true);
+        const handlePlaying = () => setIsBuffering(false);
+        const handleCanPlay = () => setIsBuffering(false);
+
         const handleUnmount = () => {
              if (video && video.duration > 0) {
                 updateProgress(id, video.currentTime, video.duration);
@@ -1459,11 +1076,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ id, src, title, description, 
 
         if (video) {
             video.addEventListener('pause', handlePause);
+            video.addEventListener('waiting', handleWaiting);
+            video.addEventListener('playing', handlePlaying);
+            video.addEventListener('canplay', handleCanPlay);
         }
 
         return () => {
             if (video) {
                 video.removeEventListener('pause', handlePause);
+                video.removeEventListener('waiting', handleWaiting);
+                video.removeEventListener('playing', handlePlaying);
+                video.removeEventListener('canplay', handleCanPlay);
                 // Save on unmount
                 handleUnmount();
             }
@@ -1813,12 +1436,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ id, src, title, description, 
                 className={isMiniMode ? "w-full h-full object-cover" : "w-full h-auto max-h-full"}
                 onClick={isMiniMode ? toggleMiniMode : togglePlayPause}
                 crossOrigin="anonymous"
+                preload="auto" // Force browser to preload aggressively to prevent stalling
             >
                 <track default kind="subtitles" srcLang="en" label="English" src={VTT_TRACK_SRC} />
             </video>
+            
+            {/* Buffering Indicator */}
+            {isBuffering && (
+                <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+                    <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+            )}
            
             {/* Pause Overlay - The Dark Veil */}
-            {!isPlaying && !isMiniMode && (
+            {!isPlaying && !isMiniMode && !isBuffering && (
                 <div
                     className="absolute inset-0 bg-black/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center text-center p-8 transition-opacity duration-500 animate-fade-in cursor-pointer"
                     onClick={togglePlayPause}
@@ -2003,6 +1634,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ id, src, title, description, 
 
 const Footer: React.FC = () => {
     const { t } = useLanguage();
+    const [showChangelog, setShowChangelog] = useState(false);
+
     return (
         <footer className="bg-black py-8 mt-12 border-t border-gray-800/50">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -2021,11 +1654,20 @@ const Footer: React.FC = () => {
                     </div>
                 </div>
                 
-                <div className="text-center text-gray-600 text-xs leading-relaxed border-t border-gray-900 pt-8">
-                    <p>{t('copyright')}</p>
-                    <p className="mt-1">Otros nombres o marcas son marcas registradas de sus respectivos dueños.</p>
+                <div className="text-center text-gray-600 text-xs leading-relaxed border-t border-gray-900 pt-8 flex flex-col md:flex-row justify-between items-center">
+                    <div>
+                        <p>{t('copyright')}</p>
+                        <p className="mt-1">Otros nombres o marcas son marcas registradas de sus respectivos dueños.</p>
+                    </div>
+                     <button 
+                        onClick={() => setShowChangelog(true)} 
+                        className="mt-4 md:mt-0 text-gray-500 hover:text-red-500 transition-colors font-bold"
+                    >
+                        {t('changelog')}
+                    </button>
                 </div>
             </div>
+            {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
         </footer>
     );
 };
@@ -2076,7 +1718,7 @@ function MainApp() {
     const [isLoadingContent, setIsLoadingContent] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
-    const [showSplash, setShowSplash] = useState(true);
+    // showSplash state removed as requested
    
     // Use a single object to track player state including metadata and intro info
     const [playerState, setPlayerState] = useState<PlayerState | null>(null);
@@ -2084,62 +1726,68 @@ function MainApp() {
     const { history, watchProgress } = useUserHistory(); // Get history for recommendations
     const { t } = useLanguage(); // Get translation function
 
-    const featuredContent = MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0];
-    const genres = [...new Set(MOCK_CONTENT.flatMap(c => c.genre))];
+    // Memoize these calculations to avoid recalculating on every render
+    const featuredContent = useMemo(() => MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0], []);
+    const genres = useMemo(() => [...new Set(MOCK_CONTENT.flatMap(c => c.genre))], []);
    
-    const filteredContent = searchQuery
-      ? MOCK_CONTENT.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
-      : [];
+    // Memoize filtered content to avoid filtering on every render unless search query changes
+    const filteredContent = useMemo(() => {
+        return searchQuery
+        ? MOCK_CONTENT.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+        : [];
+    }, [searchQuery]);
 
-    // Recommendation Logic
-    const getRecommendations = (historyIds: string[], allContent: Content[]): Content[] => {
-        if (historyIds.length === 0) return [];
-
-        const watchedContent = allContent.filter(c => historyIds.includes(c.id));
-        const genreCounts: Record<string, number> = {};
-
-        watchedContent.forEach(c => {
-            c.genre.forEach(g => {
-                genreCounts[g] = (genreCounts[g] || 0) + 1;
+    // Memoize Recommendation Logic
+    const recommendedContent = useMemo(() => {
+        const getRecommendations = (historyIds: string[], allContent: Content[]): Content[] => {
+            if (historyIds.length === 0) return [];
+    
+            const watchedContent = allContent.filter(c => historyIds.includes(c.id));
+            const genreCounts: Record<string, number> = {};
+    
+            watchedContent.forEach(c => {
+                c.genre.forEach(g => {
+                    genreCounts[g] = (genreCounts[g] || 0) + 1;
+                });
             });
-        });
+    
+            const unwatchedContent = allContent.filter(c => !historyIds.includes(c.id));
+    
+            return unwatchedContent.sort((a, b) => {
+                const scoreA = a.genre.reduce((acc, g) => acc + (genreCounts[g] || 0), 0);
+                const scoreB = b.genre.reduce((acc, g) => acc + (genreCounts[g] || 0), 0);
+                return scoreB - scoreA;
+            }).slice(0, 10);
+        };
+        return getRecommendations(history, MOCK_CONTENT);
+    }, [history]);
 
-        const unwatchedContent = allContent.filter(c => !historyIds.includes(c.id));
+    // Memoize Continue Watching Logic
+    const continueWatchingContent = useMemo(() => {
+        const getContinueWatching = (progressMap: Record<string, WatchProgress>, allContent: Content[]): Content[] => {
+            // Filter content that has progress, is not finished (< 95%), and sort by lastWatched
+            return allContent
+                .filter(c => {
+                    const progress = progressMap[c.id];
+                    return progress && (progress.currentTime / progress.duration) < 0.95;
+                })
+                .sort((a, b) => {
+                    const timeA = progressMap[a.id]?.lastWatched || 0;
+                    const timeB = progressMap[b.id]?.lastWatched || 0;
+                    return timeB - timeA;
+                });
+        };
+        return getContinueWatching(watchProgress, MOCK_CONTENT);
+    }, [watchProgress]);
 
-        return unwatchedContent.sort((a, b) => {
-            const scoreA = a.genre.reduce((acc, g) => acc + (genreCounts[g] || 0), 0);
-            const scoreB = b.genre.reduce((acc, g) => acc + (genreCounts[g] || 0), 0);
-            return scoreB - scoreA;
-        }).slice(0, 10);
-    };
-
-    const recommendedContent = getRecommendations(history, MOCK_CONTENT);
-
-    // Continue Watching Logic
-    const getContinueWatching = (progressMap: Record<string, WatchProgress>, allContent: Content[]): Content[] => {
-        // Filter content that has progress, is not finished (< 95%), and sort by lastWatched
-        return allContent
-            .filter(c => {
-                const progress = progressMap[c.id];
-                return progress && (progress.currentTime / progress.duration) < 0.95;
-            })
-            .sort((a, b) => {
-                const timeA = progressMap[a.id]?.lastWatched || 0;
-                const timeB = progressMap[b.id]?.lastWatched || 0;
-                return timeB - timeA;
-            });
-    };
-
-    const continueWatchingContent = getContinueWatching(watchProgress, MOCK_CONTENT);
-
-    const getProgressPercent = (id: string) => {
+    const getProgressPercent = useCallback((id: string) => {
         const progress = watchProgress[id];
         if (!progress || progress.duration === 0) return 0;
         return (progress.currentTime / progress.duration) * 100;
-    };
+    }, [watchProgress]);
 
 
-    const handleCardClick = (content: Content) => {
+    const handleCardClick = useCallback((content: Content) => {
         setIsLoadingContent(true);
         // Simulate network delay for fetching details
         setTimeout(() => {
@@ -2147,47 +1795,47 @@ function MainApp() {
             setActiveModal(true);
             setIsLoadingContent(false);
         }, 800);
-    };
+    }, []);
    
-    const handleHeroDetailsClick = () => {
+    const handleHeroDetailsClick = useCallback(() => {
         setIsLoadingContent(true);
         setTimeout(() => {
             setSelectedContent(featuredContent);
             setActiveModal(true);
             setIsLoadingContent(false);
         }, 800);
-    }
+    }, [featuredContent]);
 
 
 
 
-    const handlePlayClick = (id: string, url: string, title: string, description: string, introStart?: number, introEnd?: number) => {
+    const handlePlayClick = useCallback((id: string, url: string, title: string, description: string, introStart?: number, introEnd?: number) => {
         if (url) {
             setActiveModal(false);
             setPlayerState({ id, url, title, description, introStart, introEnd });
             setIsMiniPlayer(false);
         }
-    };
+    }, []);
 
 
 
 
-    const closeModal = () => {
+    const closeModal = useCallback(() => {
         setActiveModal(false);
         setTimeout(() => setSelectedContent(null), 300);
-    };
+    }, []);
    
-    const handleSearch = (query: string) => {
+    const handleSearch = useCallback((query: string) => {
         setSearchQuery(query);
         if (query.trim()) {
-            if (currentPage !== 'search') setCurrentPage('search');
+            setCurrentPage(prev => prev !== 'search' ? 'search' : prev);
             // Simulate search loading
             setIsSearching(true);
         } else {
-            if (currentPage === 'search') setCurrentPage('home');
+            setCurrentPage(prev => prev === 'search' ? 'home' : prev);
             setIsSearching(false);
         }
-    };
+    }, []);
    
     // Effect to simulate search network latency when query changes
     useEffect(() => {
@@ -2201,7 +1849,7 @@ function MainApp() {
    
     return (
         <div className="bg-black min-h-screen text-white">
-            {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
+            {/* showSplash removed here */}
             {isLoadingContent && <LoadingOverlay />}
            
             <Header
@@ -2255,14 +1903,10 @@ function MainApp() {
                         isSearching={isSearching}
                         onCardClick={handleCardClick}
                     />
-                ) : currentPage === 'upload' ? (
-                    <UploadPage />
                 ) : currentPage === 'watchlist' ? (
                     <WatchlistPage onCardClick={handleCardClick} />
                 ) : currentPage === 'calls' ? (
                     <CallsPage />
-                ) : currentPage === 'messages' ? (
-                    <MessagesPage />
                 ) : (
                     <MoviesPage contents={MOCK_CONTENT} onCardClick={handleCardClick} />
                 )}
