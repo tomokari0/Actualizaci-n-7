@@ -1,3 +1,4 @@
+
 // FIX: Import GroundingChunk from @google/genai instead of the local types file.
 import { GoogleGenAI, Modality, GenerateContentResponse, Chat, GroundingChunk } from '@google/genai';
 

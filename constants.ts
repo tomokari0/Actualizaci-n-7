@@ -1,3 +1,4 @@
+
 import { Content } from './types';
 
 
@@ -606,7 +607,7 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
         videoUrl: 'Video URL',
         thumbnailUrl: 'Thumbnail URL',
         joinCommunity: 'Join the community',
-        copyright: "Copyright © 2025 - 2025 SeikoVT. 'SeikoYT', los logotipos de SeikoYT y el nombre pertenecen a SeikoVT.",
+        copyright: "Copyright © 2025 - 2025 SeikoYT. 'SeikoYT', the SeikoYT logos and name belong to SeikoYT.",
         playTrailer: 'Play Trailer',
         playMovie: 'Play Movie',
         playEpisode: 'Play Episode',
@@ -649,7 +650,7 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
         videoUrl: 'URL del Video',
         thumbnailUrl: 'URL de la Miniatura',
         joinCommunity: 'Únete a la comunidad',
-        copyright: "Copyright © 2025 - 2025 SeikoVT. 'SeikoYT', los logotipos de SeikoYT y el nombre pertenecen a SeikoVT.",
+        copyright: "Copyright © 2025 - 2025 SeikoYT. 'SeikoYT', los logotipos de SeikoYT y el nombre pertenecen a SeikoYT.",
         playTrailer: 'Ver Tráiler',
         playMovie: 'Ver Película',
         playEpisode: 'Ver Episodio',
@@ -692,7 +693,7 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
         videoUrl: '動画URL',
         thumbnailUrl: 'サムネイルURL',
         joinCommunity: 'コミュニティに参加',
-        copyright: "Copyright © 2025 - 2025 SeikoVT. 'SeikoYT', los logotipos de SeikoYT y el nombre pertenecen a SeikoVT.",
+        copyright: "Copyright © 2025 - 2025 SeikoYT. 'SeikoYT', the SeikoYT logos and name belong to SeikoYT.",
         playTrailer: '予告編を再生',
         playMovie: '映画を再生',
         playEpisode: 'エピソードを再生',

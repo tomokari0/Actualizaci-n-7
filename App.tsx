@@ -37,7 +37,7 @@ const AdUnit: React.FC<{ slot: string; format?: 'auto' | 'fluid' | 'rectangle'; 
         <div className={`my-8 flex justify-center w-full overflow-hidden min-h-[90px] bg-white/5 rounded-lg items-center text-gray-600 text-xs ${className}`}>
             <ins className="adsbygoogle"
                  style={{ display: 'block', width: '100%' }}
-                 data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" // REEMPLAZAR CON TU ID REAL
+                 data-ad-client="ca-pub-8922860413075053"
                  data-ad-slot={slot}
                  data-ad-format={format}
                  data-full-width-responsive="true"></ins>
@@ -97,7 +97,7 @@ export const useWatchlist = () => useContext(WatchlistContext);
 export const WatchlistProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [watchlist, setWatchlist] = useState<string[]>(() => {
         try {
-            const saved = localStorage.getItem('seiko_watchlist');
+            const saved = localStorage.getItem('seikoyt_watchlist');
             return saved ? JSON.parse(saved) : [];
         } catch (e) {
             return [];
@@ -105,7 +105,7 @@ export const WatchlistProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     useEffect(() => {
-        localStorage.setItem('seiko_watchlist', JSON.stringify(watchlist));
+        localStorage.setItem('seikoyt_watchlist', JSON.stringify(watchlist));
     }, [watchlist]);
 
     const addToWatchlist = useCallback((id: string) => setWatchlist(prev => prev.includes(id) ? prev : [...prev, id]), []);
@@ -143,20 +143,20 @@ export const useUserHistory = () => useContext(UserHistoryContext);
 export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [history, setHistory] = useState<string[]>(() => {
         try {
-            const saved = localStorage.getItem('seiko_watch_history');
+            const saved = localStorage.getItem('seikoyt_watch_history');
             return saved ? JSON.parse(saved) : [];
         } catch (e) { return []; }
     });
 
     const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>(() => {
         try {
-            const saved = localStorage.getItem('seiko_watch_progress');
+            const saved = localStorage.getItem('seikoyt_watch_progress');
             return saved ? JSON.parse(saved) : {};
         } catch (e) { return {}; }
     });
 
-    useEffect(() => { localStorage.setItem('seiko_watch_history', JSON.stringify(history)); }, [history]);
-    useEffect(() => { localStorage.setItem('seiko_watch_progress', JSON.stringify(watchProgress)); }, [watchProgress]);
+    useEffect(() => { localStorage.setItem('seikoyt_watch_history', JSON.stringify(history)); }, [history]);
+    useEffect(() => { localStorage.setItem('seikoyt_watch_progress', JSON.stringify(watchProgress)); }, [watchProgress]);
 
     const addToHistory = useCallback((id: string) => {
         setHistory(prev => [...prev.filter(itemId => itemId !== id), id]);
@@ -225,7 +225,7 @@ const YouTubeIcon: React.FC<{ className?: string }> = React.memo(({ className })
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
 ));
 const InstagramIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.332 3.608 1.308.975.975 1.245 2.242 1.308 3.608.058 1.266.07 1.646.07 4.85s-.012 3.584-.07 4.85c-.062 1.366-.332 2.633-1.308 3.608-.975.975-2.242 1.245-3.608 1.308-1.266.058-1.646.07-4.85.07s-3.584-.012-4.85-.07c-1.366-.062-2.633-.332-3.608-1.308-.975-.975-1.245-2.242-1.308-3.608-.058-1.266-.07-1.646-.07-4.85s.012-3.584.07-4.85c.062-1.366.332-2.633 1.308-3.608.975-.975 2.242-1.245 3.608-1.308 1.266-.058 1.646-.07 4.85-.07zm0-2.163c-3.259 0-3.667.014-4.947.072-1.303.06-2.192.267-2.97.568-.804.312-1.486.732-2.165 1.411-.679.679-1.099 1.361-1.411 2.165-.301.778-.508 1.667-.568 2.97-.058 1.28-.072 1.688-.072 4.947s.014 3.667.072 4.947c.06 1.303.267 2.192.568 2.97.312.804.732 1.486 1.411 2.165.679.679 1.361 1.099 2.165 1.411.778.301 1.667.508 2.97.568 1.28.058 1.688.072 4.947.072s3.667-.014 4.947-.072c1.303-.06 2.192-.267 2.97-.568.804-.312 1.486-.732 2.165-1.411.679-.679 1.099-1.361 1.411-2.165.301-.778.508-1.667.568-2.97.058-1.28.072-1.688.072-4.947s-.014-3.667-.072-4.947c-.06-1.303-.267-2.192-.568-2.97-.312-.804-.732-1.486-1.411-2.165-.679-.679-1.361-1.099-2.165-1.411-.778-.301-1.667-.508-2.97-.568-1.28-.058-1.688-.072-4.947-.072zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.162 6.162 6.162 6.162-2.759 6.162-6.162-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.441s.645 1.441 1.441 1.441 1.441-.645 1.441-1.441-.645-1.441-1.441-1.441z"/></svg>
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.332 3.608 1.308.975.975 1.245 2.242 1.308 3.608.058 1.266.07 1.646.07 4.85s-.012 3.584-.07 4.85c-.062 1.366-.332 2.633-1.308 3.608-.975.975-2.242 1.245-3.608 1.308-1.266.058-1.646.07-4.85.07s-3.584-.012-4.85-.07c-1.366-.062-2.633-.332-3.608-1.308-.975-.975-1.245-2.242-1.308-3.608-.058-1.266-.07-1.646-.07-4.85s.012-3.584.07-4.85c.062-1.366.332-2.633 1.308-3.608.975-.975 2.242-1.245 3.608-1.308 1.266-.058 1.646-.07 4.85-.07zm0-2.163c-3.259 0-3.667.014-4.947.072-1.303.06-2.192.267-2.97.568-.804.312-1.486.732-2.165 1.411-.679.679-1.099 1.361-1.411 2.165-.301.778-.508 1.667-.568 2.97-.058 1.28-.072 1.688-.072 4.947s.014 3.667.072 4.947c.06 1.303.267 2.192.568 2.97.312.804.732 1.486 1.411 2.165.679.679 1.361 1.099 2.165 1.411.778-.301 1.667-.508-2.97-.568-1.28-.058-1.688-.072-4.947-.072zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.162 6.162 6.162 6.162-2.759 6.162-6.162-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.441s.645 1.441 1.441 1.441 1.441-.645 1.441-1.441-.645-1.441-1.441-1.441z"/></svg>
 ));
 const TikTokIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.17-2.86-.6-4.12-1.31a6.34 6.34 0 0 1-2.33-2.23v11.16c.01 1.48-.44 2.96-1.3 4.21-.86 1.25-2.1 2.2-3.53 2.72-1.43.52-3 .64-4.5.35a8.1 8.1 0 0 1-3.76-1.61c-1.11-.89-1.99-2.06-2.55-3.38-.56-1.33-.76-2.79-.58-4.24.18-1.45.76-2.84 1.67-3.99.91-1.15 2.14-2.01 3.53-2.48 1.4-.47 2.9-.55 4.34-.23v4.08c-.83-.19-1.7-.19-2.5-.01-1.03.22-1.94.86-2.52 1.72-.58.86-.78 1.9-.55 2.92.23 1.02.87 1.9 1.77 2.45.9.55 1.97.71 2.98.45.91-.23 1.71-.84 2.24-1.64.4-.6.62-1.3.62-2.01V.02z"/></svg>
@@ -401,7 +401,7 @@ const CallsPage: React.FC = () => {
     const [jitsiApi, setJitsiApi] = useState<any>(null);
 
     useEffect(() => {
-        const activeCall = sessionStorage.getItem('seiko_call_active');
+        const activeCall = sessionStorage.getItem('seikoyt_call_active');
         if (activeCall) {
             const { room, name } = JSON.parse(activeCall);
             setRoomName(room); setDisplayName(name); setIsCallStarted(true);
@@ -416,7 +416,7 @@ const CallsPage: React.FC = () => {
 
     const startCall = (e: React.FormEvent) => {
         e.preventDefault(); if (!roomName || !displayName) return;
-        sessionStorage.setItem('seiko_call_active', JSON.stringify({ room: roomName, name: displayName }));
+        sessionStorage.setItem('seikoyt_call_active', JSON.stringify({ room: roomName, name: displayName }));
         setIsCallStarted(true);
     };
 
@@ -430,7 +430,7 @@ const CallsPage: React.FC = () => {
     if (isCallStarted) {
         return (
             <div className="fixed inset-0 z-50 bg-black flex flex-col pt-16 md:pt-20">
-                 <div className="absolute top-4 right-4 z-[60]"><button onClick={() => { if (jitsiApi) jitsiApi.dispose(); sessionStorage.removeItem('seiko_call_active'); setIsCallStarted(false); }} className="bg-red-600 text-white px-4 py-2 rounded-full font-bold hover:bg-red-700 transition uppercase tracking-widest text-xs">Exit</button></div>
+                 <div className="absolute top-4 right-4 z-[60]"><button onClick={() => { if (jitsiApi) jitsiApi.dispose(); sessionStorage.removeItem('seikoyt_call_active'); setIsCallStarted(false); }} className="bg-red-600 text-white px-4 py-2 rounded-full font-bold hover:bg-red-700 transition uppercase tracking-widest text-xs">Exit</button></div>
                  <div ref={jitsiContainerRef} className="w-full h-full" />
             </div>
         );
@@ -503,7 +503,7 @@ const Footer: React.FC = () => {
                         <a href="https://tiktok.com/@seikovt1" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[#00F2EA] transition-colors"><TikTokIcon className="w-6 h-6" /></a>
                         <a href="https://discord.gg/fdDkGA7MWP" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[#5865F2] transition-colors"><DiscordIcon className="w-6 h-6" /></a>
                     </div>
-                    <div className="text-center md:text-right"><h4 className="text-red-500 font-bebas text-2xl tracking-wider">SEIKO VT</h4><p className="text-gray-500 text-xs mt-1">{t('joinCommunity')}</p></div>
+                    <div className="text-center md:text-right"><h4 className="text-red-500 font-bebas text-2xl tracking-wider">SEIKOYT</h4><p className="text-gray-500 text-xs mt-1">{t('joinCommunity')}</p></div>
                 </div>
                 <div className="text-center text-gray-600 text-xs border-t border-gray-900 pt-8 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
                     <div><p>{t('copyright')}</p></div>
@@ -522,7 +522,7 @@ export default function App() {
 }
 
 function MainApp() {
-    const [currentPage, setCurrentPage] = useState<Page>(() => (typeof window !== 'undefined' && sessionStorage.getItem('seiko_call_active')) ? 'calls' : 'home');
+    const [currentPage, setCurrentPage] = useState<Page>(() => (typeof window !== 'undefined' && sessionStorage.getItem('seikoyt_call_active')) ? 'calls' : 'home');
     const [activeModal, setActiveModal] = useState(false);
     const [selectedContent, setSelectedContent] = useState<Content | null>(null);
     const [isLoadingContent, setIsLoadingContent] = useState(false);
