@@ -1,6 +1,6 @@
 
 // FIX: Import GroundingChunk from @google/genai instead of the local types file.
-import { GoogleGenAI, Modality, GenerateContentResponse, Chat, GroundingChunk } from '@google/genai';
+import { GoogleGenAI, Modality, GenerateContentResponse, Chat, GroundingChunk, Type } from '@google/genai';
 
 // FIX: Per coding guidelines, the API key must come from `process.env.API_KEY`, which also resolves the 'ImportMeta' error.
 const API_KEY = process.env.API_KEY;
@@ -116,4 +116,50 @@ export const searchWithGrounding = async (query: string): Promise<{ text: string
         console.error("Error with grounded search:", error);
         return { text: "Sorry, I couldn't find an answer to that. Please try another question.", sources: [] };
     }
+};
+
+export const getPersonalizedRecommendations = async (
+  watchedTitles: string[],
+  likedTitles: string[],
+  searchQueries: string[],
+  availableContent: { id: string; title: string; description: string; genre: string[] }[]
+): Promise<string[]> => {
+  if (!ai) return [];
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `
+        You are a content recommendation engine.
+        User Profile:
+        - Watched: ${watchedTitles.join(', ')}
+        - Liked: ${likedTitles.join(', ')}
+        - Recent Searches: ${searchQueries.join(', ')}
+
+        Available Content Catalog:
+        ${JSON.stringify(availableContent)}
+
+        Task: Select the top 8 content IDs from the catalog that match the user's preferences based on their history and likes. 
+        Prioritize items similar to what they liked and searched for. Do not include items they have likely already watched if they are not re-watchable types.
+      `,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            recommendedIds: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            }
+          }
+        }
+      }
+    });
+
+    const json = JSON.parse(response.text || "{}");
+    return json.recommendedIds || [];
+  } catch (error) {
+    console.error("Error getting recommendations:", error);
+    return [];
+  }
 };
