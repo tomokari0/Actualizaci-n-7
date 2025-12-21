@@ -1,5 +1,5 @@
-import React from 'react';
 
+import React from 'react';
 
 export interface Episode {
   id: string;
@@ -12,7 +12,6 @@ export interface Episode {
   introEnd?: number;
 }
 
-
 export interface Season {
   id: string;
   seasonNumber: number;
@@ -20,6 +19,18 @@ export interface Season {
   episodes: Episode[];
 }
 
+export interface DrmConfig {
+  widevine?: {
+    licenseUrl: string;
+  };
+  playready?: {
+    licenseUrl: string;
+  };
+  fairplay?: {
+    licenseUrl: string;
+    certificateUrl: string;
+  };
+}
 
 export interface Content {
   id: string;
@@ -41,10 +52,11 @@ export interface Content {
   // Series specific
   seasons?: Season[];
 
-
   trailerUrl?: string;
+  
+  // DRM Configuration
+  drm?: DrmConfig;
 }
-
 
 export interface Comment {
   id: string;
@@ -55,7 +67,3 @@ export interface Comment {
   likes: number;
   userInteraction?: 'like' | 'dislike';
 }
-
-
-// ChatMessage and GroundingChunk interfaces removed as they were only used by deactivated Gemini features.
-

@@ -1,17 +1,18 @@
 
 import React, { useState, useEffect, useRef, createContext, useContext, useMemo, useCallback } from 'react';
-import { Content, Episode, Season } from './types';
+import { Content, Episode, Season, DrmConfig } from './types';
 import { MOCK_CONTENT, LANGUAGES, TRANSLATIONS } from './constants';
 import { getPersonalizedRecommendations } from './services/geminiService';
 
 // FIX: Define custom element as a component variable to bypass strict IntrinsicElements type checking.
 const HyvorTalkComments = 'hyvor-talk-comments' as unknown as React.ComponentType<any>;
 
-// FIX: Declare global interface for Jitsi API to avoid TypeScript errors
+// FIX: Declare global interface for Jitsi API and Shaka Player to avoid TypeScript errors
 declare global {
   interface Window {
     JitsiMeetExternalAPI: any;
     adsbygoogle: any;
+    shaka: any;
   }
 }
 
@@ -46,20 +47,51 @@ const getNextEpisode = (content: Content, currentEpisodeId: string): Episode | n
     return null;
 };
 
-// --- ADSENSE COMPONENT ---
+const getPreviousEpisode = (content: Content, currentEpisodeId: string): Episode | null => {
+    if (!content.seasons) return null;
+    let previousEpisode: Episode | null = null;
+    for (const season of content.seasons) {
+        for (const episode of season.episodes) {
+            if (episode.id === currentEpisodeId) return previousEpisode;
+            previousEpisode = episode;
+        }
+    }
+    return null;
+};
 
 const AdUnit: React.FC<{ slot: string; format?: 'auto' | 'fluid' | 'rectangle'; className?: string }> = ({ slot, format = 'auto', className = '' }) => {
+    const adRef = useRef<HTMLModElement>(null);
+
     useEffect(() => {
-        try {
-            (window.adsbygoogle = window.adsbygoogle || []).push({});
-        } catch (e) {
-            console.error("AdSense error:", e);
-        }
+        // Delay the push to ensure the element has been rendered and has dimensions (layout phase complete)
+        const timer = setTimeout(() => {
+            try {
+                if (adRef.current && adRef.current.offsetWidth > 0) {
+                    (window.adsbygoogle = window.adsbygoogle || []).push({});
+                } else {
+                    // Retry once more if width is 0 (e.g. during animations)
+                    setTimeout(() => {
+                         if (adRef.current && adRef.current.offsetWidth > 0) {
+                            try {
+                                (window.adsbygoogle = window.adsbygoogle || []).push({});
+                            } catch (e) {
+                                console.error("AdSense error (retry):", e);
+                            }
+                         }
+                    }, 500);
+                }
+            } catch (e) {
+                console.error("AdSense error:", e);
+            }
+        }, 100);
+
+        return () => clearTimeout(timer);
     }, []);
 
     return (
         <div className={`my-8 flex justify-center w-full overflow-hidden min-h-[90px] bg-white/5 rounded-lg items-center text-gray-600 text-xs ${className}`}>
             <ins className="adsbygoogle"
+                 ref={adRef}
                  style={{ display: 'block', width: '100%' }}
                  data-ad-client="ca-pub-8922860413075053"
                  data-ad-slot={slot}
@@ -329,6 +361,9 @@ const PhoneIcon: React.FC<{ className?: string }> = React.memo(({ className }) =
 const SkipNextIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"></path></svg>
 ));
+const SkipPreviousIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"></path></svg>
+));
 const PipIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 1.98 2 1.98h18c1.1 0 2-.88 2-1.98V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"></path></svg>
 ));
@@ -351,20 +386,21 @@ const ThumbDownIcon: React.FC<{ className?: string, filled?: boolean }> = React.
 const SparklesIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 6 6.5 9.5 3 12l3.5 2.5L9 18l2.5-3.5L15 12l-3.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"></path></svg>
 ));
+const GamepadIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-10 7H8v3H6v-3H3v-2h3V8h2v3h3v2zm4.5 2c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4-3c-.83 0-1.5-.67-1.5-1.5S18.67 9 19.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"></path></svg>
+));
+const WifiIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12.01 21.49L23.64 7c-.45-.34-4.93-4-11.64-4C5.28 3 .81 6.66.36 7l11.63 14.49.01.01.01-.01z"/></svg>
+));
+const HeadphonesIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7a9 9 0 0 0-9-9z"/></svg>
+));
 
-// FIX: Add missing social icons.
 const YouTubeIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
 ));
 const InstagramIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.332 3.608 1.308.975.975 1.245 2.242 1.308 3.608.058 1.266.07 1.646.07 4.85s-.012 3.584-.07 4.85c-.062 1.366-.332 2.633-1.308 3.608-.975-.975-1.245-2.242-1.308-3.608-.058-1.266-.07-1.646-.07-4.85s.012-3.584.07-4.85c.062-1.366.332-2.633 1.308-3.608.975-.975 2.242-1.245 3.608-1.308 1.266-.058 1.646-.07 4.85-.07zm0-2.163c-3.259 0-3.667.014-4.947.072-1.303.06-2.192.267-2.97.568-.804.312-1.486.732-2.165 1.411-.679.679-1.099 1.361-1.411 2.165-.301.778-.508 1.667-.568 2.97-.058 1.28-.072 1.688-.072 4.947s.014 3.667.072 4.947c.06 1.303.267 2.192.568 2.97.312.804.732 1.486 1.411 2.165.679.679 1.361 1.099 2.165 1.411.778.301 1.667.508 2.97.568 1.28.058 1.688.072 4.947.072s3.667-.014 4.947-.072c1.303-.06 2.192-.267 2.97-.568.804-.312 1.486-.732 2.165-1.411.679-.679 1.099-1.361 1.411-2.165.301-.778.508-1.667.508-2.97-.568-1.28-.058-1.688-.072-4.947-.072zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.162 6.162 6.162 6.162-2.759 6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162zM12 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.441s.645 1.441 1.441 1.441 1.441-.645 1.441-1.441-.645-1.441-1.441-1.441z"/></svg>
-));
-const DiscordIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037 19.736 19.736 0 0 0-4.885 1.515.069.069 0 0 0-.032.027C.533 9.048-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.125-.094.252-.192.37-.29a.074.074 0 0 1 .077-.01c3.927 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .077.01c.118.098.245.196.37.29a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.872.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.182 0-2.156-1.085-2.156-2.419 0-1.333.955-2.419 2.156-2.419 1.21 0 2.176 1.096 2.156 2.419 0 1.334-.945 2.419-2.156 2.419zm7.974 0c-1.182 0-2.156-1.085-2.156-2.419 0-1.333.955-2.419 2.156-2.419 1.21 0 2.176 1.096 2.156 2.419 0 1.334-.946 2.419-2.156 2.419z"/></svg>
-));
-
-const TikTokIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.65-1.62-1.1-.04 1.86.04 3.72-.08 5.57-.09 1.4-.4 2.78-1.05 4.03-1.17 2.2-3.35 3.74-5.73 4.14-2.42.4-4.94-.04-6.93-1.4A9.05 9.05 0 0 1 .83 13.9a8.13 8.13 0 0 1 11.69-7.14v4.06c-1.66-.88-3.9-.5-5.38 1.01-1.35 1.4-1.32 3.65.07 5.01 1.4 1.34 3.74 1.34 5.14-.04.88-.86 1.35-2.07 1.32-3.28-.01-4.03 0-8.06.01-12.09-.43-.03-.86-.06-1.15-.4z"/></svg>
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.332 3.608 1.308.975.975 1.245 2.242 1.308 3.608.058 1.266.07 1.646.07 4.85s-.012 3.584-.07 4.85c-.062 1.366-.332 2.633-1.308 3.608-.975-.975-1.245-2.242-1.308-3.608-.058-1.266-.07-1.646-.07-4.85s.012-3.584.07-4.85c.062-1.366.332-2.633 1.308-3.608.975-.975 2.242-1.245 3.608-1.308 1.266-.058 1.646-.07 4.85-.07zm0-2.163c-3.259 0-3.667.014-4.947.072-1.303.06-2.192.267-2.97.568-.804.312-1.486.732-2.165 1.411-.679.679-1.099 1.361-1.411 2.165-.301.778-.508 1.667-.568 2.97-.058 1.28-.072 1.688-.072 4.947-.072s3.667-.014 4.947-.072c1.303-.06 2.192-.267 2.97-.568.804-.312 1.486-.732 2.165-1.411.679-.679 1.099-1.361 1.411-2.165.301-.778.508-1.667.508-2.97-.568-1.28-.058-1.688-.072-4.947-.072zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.162 6.162 6.162 6.162-2.759 6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162zM12 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.441s.645 1.441 1.441 1.441 1.441-.645 1.441-1.441-.645-1.441-1.441-1.441z"/></svg>
 ));
 
 // --- CHRISTMAS COMPONENTS ---
@@ -446,7 +482,7 @@ const LanguageSelector: React.FC = () => {
     );
 };
 
-type Page = 'home' | 'movies' | 'search' | 'watchlist' | 'calls';
+type Page = 'home' | 'movies' | 'search' | 'watchlist' | 'calls' | 'minigames';
 
 const ChangelogModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { t } = useLanguage();
@@ -537,7 +573,7 @@ const Header: React.FC<{ onNavigate: (page: Page) => void; currentPage: Page; on
                         <h1 className="text-3xl md:text-4xl text-red-500 font-bebas tracking-wider relative z-0 group-hover:text-red-400 transition-colors">SEIKOYT</h1>
                     </div>
                     <nav className="hidden lg:flex items-center space-x-6 font-medium">
-                        {['home', 'movies', 'watchlist', 'calls'].map((p) => (
+                        {['home', 'movies', 'minigames', 'watchlist', 'calls'].map((p) => (
                             <button key={p} onClick={() => onNavigate(p as Page)} className={navLinkClasses(p as Page)}>{t(p)}</button>
                         ))}
                     </nav>
@@ -605,9 +641,13 @@ const VideoPlayer: React.FC<{
     toggleMiniMode: () => void;
     onNext?: () => void;
     hasNextEpisode?: boolean;
-}> = ({ id, src, title, description, introStart, introEnd, onClose, isMiniMode, toggleMiniMode, onNext, hasNextEpisode }) => {
+    onPrevious?: () => void;
+    hasPreviousEpisode?: boolean;
+    drm?: DrmConfig;
+}> = ({ id, src, title, description, introStart, introEnd, onClose, isMiniMode, toggleMiniMode, onNext, hasNextEpisode, onPrevious, hasPreviousEpisode, drm }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const playerRef = useRef<any>(null); // Shaka Player instance
     const [isPlaying, setIsPlaying] = useState(true);
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -623,16 +663,32 @@ const VideoPlayer: React.FC<{
     // Auto Play States
     const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
     const [autoPlayTimer, setAutoPlayTimer] = useState<number | null>(null);
+    const [isAutoPlayCancelled, setIsAutoPlayCancelled] = useState(false);
     
     // Settings Menu State
     const [showSettings, setShowSettings] = useState(false);
-    const [activeSettingsTab, setActiveSettingsTab] = useState<'main' | 'quality' | 'audio' | 'subtitles' | 'speed'>('main');
+    const [activeSettingsTab, setActiveSettingsTab] = useState<'main' | 'quality' | 'audio' | 'subtitles' | 'speed' | 'theme'>('main');
     const [currentQuality, setCurrentQuality] = useState('auto');
     const [currentAudio, setCurrentAudio] = useState('original');
     const [currentSubtitle, setCurrentSubtitle] = useState('off');
+    const [playerTheme, setPlayerTheme] = useState<'dark' | 'light'>('dark');
+    
+    // New Features: Data Saver & Spatial Audio
+    const [dataSaver, setDataSaver] = useState(false);
+    const [spatialAudio, setSpatialAudio] = useState(false);
 
     const { updateProgress, watchProgress } = useUserHistory();
     const { t } = useLanguage();
+
+    // Theme Helpers
+    const isDark = playerTheme === 'dark';
+    const menuBg = isDark ? 'bg-[#181818]/95 border-gray-700 text-white' : 'bg-white/95 border-gray-200 text-gray-800 shadow-xl';
+    const overlayBg = isDark ? 'bg-black/90 border-gray-700' : 'bg-white/95 border-gray-200 shadow-xl';
+    const textSecondary = isDark ? 'text-gray-400' : 'text-gray-500';
+    const hoverItem = isDark ? 'hover:bg-white/10' : 'hover:bg-gray-100';
+    const activeItem = 'text-red-500 font-bold';
+    const buttonText = isDark ? 'text-white' : 'text-black';
+    const cancelBtn = isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800';
 
     // Mock Detection for "Auto" Quality based on connection
     useEffect(() => {
@@ -647,81 +703,275 @@ const VideoPlayer: React.FC<{
         }
     }, [currentQuality]);
 
-    useEffect(() => {
-        if (id && videoRef.current && watchProgress[id]) videoRef.current.currentTime = watchProgress[id].currentTime;
-    }, [id]);
+    // Use refs for values accessed inside event listeners to avoid re-binding listeners on every render/state change
+    const autoPlayStateRef = useRef({
+        autoPlayEnabled,
+        autoPlayTimer,
+        isAutoPlayCancelled,
+        hasNextEpisode,
+        isPlaying
+    });
 
     useEffect(() => {
-        const video = videoRef.current; if (!video) return;
+        autoPlayStateRef.current = {
+            autoPlayEnabled,
+            autoPlayTimer,
+            isAutoPlayCancelled,
+            hasNextEpisode,
+            isPlaying
+        };
+    }, [autoPlayEnabled, autoPlayTimer, isAutoPlayCancelled, hasNextEpisode, isPlaying]);
+
+    // Separate Auto Play Timer Logic
+    useEffect(() => {
+        if (autoPlayTimer === 0) {
+            if (onNext) onNext();
+            setAutoPlayTimer(null);
+        }
+        
+        if (autoPlayTimer === null || autoPlayTimer <= 0) return;
+
+        const interval = setInterval(() => {
+            setAutoPlayTimer(t => (t !== null && t > 0 ? t - 1 : 0));
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [autoPlayTimer, onNext]);
+
+    // Reset state when video ID changes
+    useEffect(() => {
+        setAutoPlayTimer(null);
+        setIsAutoPlayCancelled(false);
+        setShowSkip(false);
+        setIsPlaying(true);
+        setProgress(0);
+        setCurrentTime(0);
+        // Do not reset volume/mute as those are global player preferences usually
+    }, [id]);
+
+    const toggleFullscreen = useCallback(() => {
+        if (!containerRef.current) return;
+        if (!document.fullscreenElement) {
+            containerRef.current.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+            setIsFullscreen(true);
+        } else {
+            document.exitFullscreen();
+            setIsFullscreen(false);
+        }
+    }, []);
+
+    // Keyboard Shortcuts
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (!videoRef.current) return;
+            
+            // Ignore inputs
+            if (['input', 'textarea'].includes((document.activeElement?.tagName || '').toLowerCase())) return;
+
+            const video = videoRef.current;
+
+            switch(e.key.toLowerCase()) {
+                case ' ':
+                case 'k':
+                    e.preventDefault();
+                    if (video.paused) {
+                        video.play();
+                        setIsPlaying(true);
+                    } else {
+                        video.pause();
+                        setIsPlaying(false);
+                        // Cancel autoplay logic
+                        setAutoPlayTimer(null);
+                        setIsAutoPlayCancelled(true);
+                    }
+                    break;
+                case 'arrowright':
+                case 'l':
+                    e.preventDefault();
+                    video.currentTime = Math.min(video.duration, video.currentTime + 10);
+                    // Cancel autoplay logic
+                    setAutoPlayTimer(null);
+                    setIsAutoPlayCancelled(true);
+                    break;
+                case 'arrowleft':
+                case 'j':
+                    e.preventDefault();
+                    video.currentTime = Math.max(0, video.currentTime - 10);
+                    // Cancel autoplay logic
+                    setAutoPlayTimer(null);
+                    setIsAutoPlayCancelled(true);
+                    break;
+                case 'arrowup':
+                    e.preventDefault();
+                    setVolume(v => {
+                        const newVol = Math.min(1, v + 0.1);
+                        return newVol;
+                    });
+                    setIsMuted(false);
+                    video.muted = false;
+                    break;
+                case 'arrowdown':
+                    e.preventDefault();
+                    setVolume(v => {
+                        const newVol = Math.max(0, v - 0.1);
+                        return newVol;
+                    });
+                    break;
+                case 'm':
+                    e.preventDefault();
+                    setIsMuted(prev => {
+                        const next = !prev;
+                        video.muted = next;
+                        if (!next && video.volume === 0) {
+                            video.volume = 1;
+                            setVolume(1);
+                        }
+                        return next;
+                    });
+                    break;
+                case 'f':
+                    e.preventDefault();
+                    toggleFullscreen();
+                    break;
+                case 'escape':
+                    if (!document.fullscreenElement) {
+                        e.preventDefault();
+                        onClose();
+                    }
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [toggleFullscreen, onClose]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        const initPlayer = async () => {
+            // Assume Shaka is loaded globally via script tag
+            const shaka = (window as any).shaka;
+
+            if (shaka) {
+                shaka.polyfill.installAll();
+
+                if (shaka.Player.isBrowserSupported()) {
+                    const player = new shaka.Player(video);
+                    playerRef.current = player;
+
+                    // Error handling
+                    player.addEventListener('error', (event: any) => {
+                       console.error('Shaka Player Error', event.detail);
+                    });
+
+                    // Configure DRM
+                    const drmConfig: any = { servers: {} };
+                    if (drm) {
+                        if (drm.widevine) {
+                            drmConfig.servers['com.widevine.alpha'] = drm.widevine.licenseUrl;
+                        }
+                        if (drm.playready) {
+                            drmConfig.servers['com.microsoft.playready'] = drm.playready.licenseUrl;
+                        }
+                        if (drm.fairplay) {
+                            drmConfig.servers['com.apple.fps.1_0'] = drm.fairplay.licenseUrl;
+                            drmConfig.advanced = {
+                                'com.apple.fps.1_0': {
+                                    serverCertificateUrl: drm.fairplay.certificateUrl
+                                }
+                            };
+                        }
+                        player.configure({ drm: drmConfig });
+                    }
+
+                    try {
+                        await player.load(src);
+                        // Autoplay logic: If autoPlayEnabled refers to "play next episode", 
+                        // we still generally want the video to start playing when opened.
+                        // The component state `isPlaying` defaults to true.
+                        await video.play();
+                    } catch (e) {
+                        console.error('Shaka load error', e);
+                    }
+                } else {
+                    console.error('Shaka Player not supported');
+                    video.src = src; // Fallback
+                }
+            } else {
+                 video.src = src; // Fallback
+            }
+        };
+
         const handleTime = () => {
             const curr = video.currentTime;
             const dur = video.duration;
-            setCurrentTime(curr);
-            setProgress((curr / dur) * 100);
+            if (!isNaN(curr)) setCurrentTime(curr);
+            if (!isNaN(dur) && dur > 0) setProgress((curr / dur) * 100);
 
             // Intro skip logic
             if (introStart !== undefined && introEnd !== undefined) {
-                if (curr >= introStart && curr <= introEnd) {
-                    setShowSkip(true);
-                } else {
-                    setShowSkip(false);
-                }
+                // Ensure buttons show only during the window
+                setShowSkip(curr >= introStart && curr <= introEnd);
             }
 
-            // Auto Play logic: Trigger when 5 seconds remaining
-            if (hasNextEpisode && autoPlayEnabled && dur > 0 && dur - curr < 5 && autoPlayTimer === null) {
-                setAutoPlayTimer(5);
+            // Auto Play logic using ref
+            const state = autoPlayStateRef.current;
+            if (state.hasNextEpisode && state.autoPlayEnabled && dur > 0) {
+                const remaining = dur - curr;
+                if (remaining <= 5 && remaining > 0) {
+                    if (state.autoPlayTimer === null && !state.isAutoPlayCancelled && state.isPlaying) {
+                        setAutoPlayTimer(5);
+                    }
+                } else if (remaining > 5) {
+                    // Reset if we seek back
+                    if (state.autoPlayTimer !== null) setAutoPlayTimer(null);
+                    if (state.isAutoPlayCancelled) setIsAutoPlayCancelled(false);
+                }
             }
         };
-        const handleLoaded = () => setDuration(video.duration);
+
+        const handleLoaded = () => {
+             setDuration(video.duration);
+             // Restore watch progress here (safer than useEffect)
+             const savedProgress = watchProgress[id];
+             if (savedProgress && savedProgress.currentTime > 0) {
+                 video.currentTime = savedProgress.currentTime;
+             }
+        };
+
         const handleEnded = () => {
-             // Ensure auto-play triggers if it hasn't already (e.g., short video)
-             if (hasNextEpisode && autoPlayEnabled && autoPlayTimer === null) {
+             const state = autoPlayStateRef.current;
+             // Ensure auto-play triggers if it hasn't already (e.g., short video or fast forward)
+             if (state.hasNextEpisode && state.autoPlayEnabled && state.autoPlayTimer === null && !state.isAutoPlayCancelled) {
                  setAutoPlayTimer(5);
              }
         };
+
+        initPlayer();
 
         video.addEventListener('timeupdate', handleTime); 
         video.addEventListener('loadedmetadata', handleLoaded);
         video.addEventListener('ended', handleEnded);
         
         return () => { 
+            if (playerRef.current) {
+                playerRef.current.destroy();
+                playerRef.current = null;
+            }
             if (video) { 
                 updateProgress(id, video.currentTime, video.duration); 
                 video.removeEventListener('timeupdate', handleTime); 
                 video.removeEventListener('loadedmetadata', handleLoaded); 
                 video.removeEventListener('ended', handleEnded);
+                video.removeAttribute('src');
+                video.load();
             } 
         };
-    }, [id, updateProgress, introStart, introEnd, hasNextEpisode, autoPlayEnabled, autoPlayTimer]);
-
-    // Handle Auto Play Countdown
-    useEffect(() => {
-        let interval: any;
-        if (autoPlayTimer !== null && autoPlayTimer > 0) {
-            interval = setInterval(() => {
-                setAutoPlayTimer((prev) => {
-                    if (prev && prev <= 1) {
-                        // Time's up, play next
-                        if (onNext) onNext();
-                        return null; 
-                    }
-                    return prev ? prev - 1 : null;
-                });
-            }, 1000);
-        } else if (autoPlayTimer === 0) {
-             // Should have triggered already, but just in case
-             if (onNext) onNext();
-             setAutoPlayTimer(null);
-        }
-        return () => clearInterval(interval);
-    }, [autoPlayTimer, onNext]);
-
-    // Reset Auto Play timer if source changes or next button clicked manually
-    useEffect(() => {
-        setAutoPlayTimer(null);
-        setShowSkip(false);
-    }, [id]);
+    }, [id, updateProgress, introStart, introEnd, drm, src, watchProgress]); 
 
     // Handle Volume
     useEffect(() => {
@@ -732,10 +982,17 @@ const VideoPlayer: React.FC<{
 
     const togglePlay = () => { 
         if (videoRef.current) { 
-            if (isPlaying) videoRef.current.pause(); else videoRef.current.play(); 
+            if (isPlaying) {
+                videoRef.current.pause(); 
+                // Cancel autoplay on pause so it doesn't trigger while user is away
+                if (autoPlayTimer !== null) {
+                    setAutoPlayTimer(null);
+                    setIsAutoPlayCancelled(true);
+                }
+            } else {
+                videoRef.current.play(); 
+            }
             setIsPlaying(!isPlaying); 
-            // If paused, cancel auto play countdown
-            if (isPlaying && autoPlayTimer !== null) setAutoPlayTimer(null);
         } 
     };
 
@@ -753,20 +1010,16 @@ const VideoPlayer: React.FC<{
         if (newVolume > 0 && isMuted) setIsMuted(false);
     };
 
-    const toggleMute = () => setIsMuted(!isMuted);
-
-    const toggleFullscreen = () => {
-        if (!containerRef.current) return;
-        if (!document.fullscreenElement) {
-            containerRef.current.requestFullscreen().catch(err => {
-                console.error(`Error attempting to enable fullscreen: ${err.message}`);
-            });
-            setIsFullscreen(true);
+    const toggleMute = () => {
+        if (isMuted) {
+            setIsMuted(false);
+            if (volume === 0) setVolume(1); // Restore volume if it was 0
         } else {
-            document.exitFullscreen();
-            setIsFullscreen(false);
+            setIsMuted(true);
         }
     };
+
+    // toggleFullscreen moved to useCallback above
 
     const togglePiP = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -791,10 +1044,13 @@ const VideoPlayer: React.FC<{
 
     const cancelAutoPlay = () => {
         setAutoPlayTimer(null);
+        setIsAutoPlayCancelled(true);
     };
 
     // Auto Quality Label
     const getQualityLabel = () => {
+        if (dataSaver) return '480p (Saver)';
+        
         if (currentQuality === 'auto') {
             // Mock detector logic
             const speed = (navigator as any).connection?.downlink || 10; 
@@ -805,10 +1061,13 @@ const VideoPlayer: React.FC<{
 
     return (
         <div ref={containerRef} className={`group ${isMiniMode ? "fixed bottom-6 right-6 w-96 aspect-video bg-black z-50 shadow-2xl rounded-lg overflow-hidden border border-gray-800" : "fixed inset-0 bg-black z-50 flex items-center justify-center animate-fade-in"}`}>
+            {/* 
+               IMPORTANT: For true DRM support, this standard HTML5 <video> tag 
+               must be initialized by a specialized library like Shaka Player, Dash.js, or Video.js
+               that handles the EME/CDM interactions using the provided `drm` config props.
+            */}
             <video 
                 ref={videoRef} 
-                src={src} 
-                autoPlay 
                 preload="auto"
                 playsInline
                 className="w-full h-full object-contain" 
@@ -827,14 +1086,17 @@ const VideoPlayer: React.FC<{
 
             {/* Auto Play Overlay */}
             {autoPlayTimer !== null && (
-                <div className="absolute bottom-24 right-4 bg-black/80 backdrop-blur border border-gray-700 p-4 rounded-xl shadow-2xl z-50 animate-fade-in flex flex-col items-center space-y-3 w-64">
-                    <div className="text-gray-300 text-sm font-medium">{t('nextEpisodeIn')} <span className="text-white font-bold text-lg ml-1">{autoPlayTimer}</span></div>
-                    <div className="w-full h-1 bg-gray-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-red-500 transition-all duration-1000 ease-linear" style={{ width: `${(autoPlayTimer / 5) * 100}%` }}></div>
+                <div className={`absolute bottom-24 right-4 backdrop-blur border p-5 rounded-xl shadow-2xl z-50 animate-fade-in flex flex-col items-center space-y-4 w-72 ${overlayBg}`}>
+                    <div className="flex flex-col items-center">
+                        <span className={`${textSecondary} text-xs uppercase font-bold tracking-wider mb-1`}>{t('nextEpisodeIn')}</span>
+                        <span className={`${isDark ? 'text-white' : 'text-gray-900'} font-bebas text-5xl leading-none drop-shadow-lg`}>{autoPlayTimer}</span>
                     </div>
-                    <div className="flex w-full space-x-2">
-                        <button onClick={cancelAutoPlay} className="flex-1 bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-2 rounded transition-colors">{t('cancel')}</button>
-                        <button onClick={() => { if(onNext) onNext(); }} className="flex-1 bg-white text-black hover:bg-gray-200 text-xs font-bold py-2 rounded transition-colors">{t('playNow')}</button>
+                    <div className="w-full h-1.5 bg-gray-600 rounded-full overflow-hidden">
+                        <div className="h-full bg-red-600 transition-all duration-1000 ease-linear" style={{ width: `${(autoPlayTimer / 5) * 100}%` }}></div>
+                    </div>
+                    <div className="flex w-full space-x-3">
+                        <button onClick={cancelAutoPlay} className={`flex-1 ${cancelBtn} text-xs font-bold py-2.5 rounded-lg transition-colors uppercase tracking-wide`}>{t('cancel')}</button>
+                        <button onClick={() => { if(onNext) onNext(); }} className={`flex-1 bg-red-600 text-white hover:bg-red-700 text-xs font-bold py-2.5 rounded-lg transition-colors uppercase tracking-wide`}>{t('playNow')}</button>
                     </div>
                 </div>
             )}
@@ -849,7 +1111,14 @@ const VideoPlayer: React.FC<{
                     max="100" 
                     value={progress} 
                     onChange={(e) => { 
-                        if (videoRef.current) videoRef.current.currentTime = (Number(e.target.value) / 100) * duration; 
+                        if (videoRef.current) {
+                            videoRef.current.currentTime = (Number(e.target.value) / 100) * duration; 
+                            // Manual seek resets timer
+                            if (autoPlayTimer !== null) {
+                                setAutoPlayTimer(null);
+                                setIsAutoPlayCancelled(true);
+                            }
+                        }
                     }} 
                     className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer video-progress mb-4" 
                 />
@@ -858,13 +1127,20 @@ const VideoPlayer: React.FC<{
                     
                     {/* Left Controls */}
                     <div className="flex items-center space-x-4">
+                        {/* Previous Episode Button */}
+                        {hasPreviousEpisode && onPrevious && (
+                             <button onClick={(e) => { e.stopPropagation(); onPrevious(); }} className="text-white hover:text-red-500 transition-colors flex items-center space-x-1" title={t('previousEpisode')}>
+                                <SkipPreviousIcon className="w-8 h-8" />
+                            </button>
+                        )}
+
                          <button onClick={togglePlay} className="text-white hover:text-red-500 transition-colors">
                             {isPlaying ? <PauseIcon className="w-8 h-8" /> : <PlayIcon className="w-8 h-8" />}
                         </button>
                         
                         {/* Next Episode Button */}
                         {hasNextEpisode && onNext && (
-                             <button onClick={onNext} className="text-white hover:text-red-500 transition-colors flex items-center space-x-1" title={t('nextEpisode')}>
+                             <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="text-white hover:text-red-500 transition-colors flex items-center space-x-1" title={t('nextEpisode')}>
                                 <SkipNextIcon className="w-8 h-8" />
                             </button>
                         )}
@@ -906,12 +1182,12 @@ const VideoPlayer: React.FC<{
                             </span>
 
                             {showSettings && (
-                                <div className="absolute bottom-full mb-4 right-0 bg-[#181818]/95 backdrop-blur border border-gray-700 rounded-lg p-2 min-w-[200px] flex flex-col shadow-2xl z-50 text-sm overflow-hidden animate-scale-in">
+                                <div className={`absolute bottom-full mb-4 right-0 backdrop-blur border rounded-lg p-2 min-w-[220px] flex flex-col shadow-2xl z-50 text-sm overflow-hidden animate-scale-in ${menuBg}`}>
                                     {activeSettingsTab === 'main' && (
                                         <>
                                             {/* Auto Play Toggle */}
                                             {hasNextEpisode && (
-                                                <div className="flex justify-between items-center px-3 py-2 hover:bg-white/10 rounded w-full text-left text-white border-b border-gray-700 mb-1">
+                                                <div className={`flex justify-between items-center px-3 py-2 ${hoverItem} rounded w-full text-left ${buttonText} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'} mb-1`}>
                                                     <span>{t('autoPlay')}</span>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); setAutoPlayEnabled(!autoPlayEnabled); }}
@@ -922,30 +1198,48 @@ const VideoPlayer: React.FC<{
                                                 </div>
                                             )}
 
-                                            <button onClick={() => setActiveSettingsTab('quality')} className="flex justify-between items-center px-3 py-2 hover:bg-white/10 rounded w-full text-left text-white">
+                                            {/* Feature 1: Data Saver Mode */}
+                                            <div className={`flex justify-between items-center px-3 py-2 ${hoverItem} rounded w-full text-left ${buttonText} mb-1`}>
+                                                <div className="flex items-center space-x-2">
+                                                    <WifiIcon className="w-4 h-4" />
+                                                    <span>{t('dataSaver')}</span>
+                                                </div>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setDataSaver(!dataSaver); }}
+                                                    className={`w-8 h-4 rounded-full relative transition-colors ${dataSaver ? 'bg-green-500' : 'bg-gray-600'}`}
+                                                >
+                                                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow-md transition-transform ${dataSaver ? 'left-4.5' : 'left-0.5'}`} style={{ left: dataSaver ? '18px' : '2px' }}></div>
+                                                </button>
+                                            </div>
+
+                                            <button onClick={() => setActiveSettingsTab('quality')} className={`flex justify-between items-center px-3 py-2 ${hoverItem} rounded w-full text-left ${buttonText} ${dataSaver ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                                 <span>{t('quality')}</span>
-                                                <span className="text-gray-400 text-xs">{getQualityLabel()}</span>
+                                                <span className={`${textSecondary} text-xs`}>{getQualityLabel()}</span>
                                             </button>
-                                            <button onClick={() => setActiveSettingsTab('speed')} className="flex justify-between items-center px-3 py-2 hover:bg-white/10 rounded w-full text-left text-white">
+                                            <button onClick={() => setActiveSettingsTab('speed')} className={`flex justify-between items-center px-3 py-2 ${hoverItem} rounded w-full text-left ${buttonText}`}>
                                                 <span>{t('speed')}</span>
-                                                <span className="text-gray-400 text-xs">{playbackRate}x</span>
+                                                <span className={`${textSecondary} text-xs`}>{playbackRate}x</span>
                                             </button>
-                                            <button onClick={() => setActiveSettingsTab('audio')} className="flex justify-between items-center px-3 py-2 hover:bg-white/10 rounded w-full text-left text-white">
+                                            <button onClick={() => setActiveSettingsTab('audio')} className={`flex justify-between items-center px-3 py-2 ${hoverItem} rounded w-full text-left ${buttonText}`}>
                                                 <span>{t('audio')}</span>
-                                                <span className="text-gray-400 text-xs capitalize">{currentAudio}</span>
+                                                <span className={`${textSecondary} text-xs capitalize`}>{currentAudio}</span>
                                             </button>
-                                            <button onClick={() => setActiveSettingsTab('subtitles')} className="flex justify-between items-center px-3 py-2 hover:bg-white/10 rounded w-full text-left text-white">
+                                            <button onClick={() => setActiveSettingsTab('subtitles')} className={`flex justify-between items-center px-3 py-2 ${hoverItem} rounded w-full text-left ${buttonText}`}>
                                                 <span>{t('subtitles')}</span>
-                                                <span className="text-gray-400 text-xs capitalize">{currentSubtitle}</span>
+                                                <span className={`${textSecondary} text-xs capitalize`}>{currentSubtitle}</span>
+                                            </button>
+                                            <button onClick={() => setActiveSettingsTab('theme')} className={`flex justify-between items-center px-3 py-2 ${hoverItem} rounded w-full text-left ${buttonText}`}>
+                                                <span>Theme</span>
+                                                <span className={`${textSecondary} text-xs capitalize`}>{isDark ? 'Dark' : 'Light'}</span>
                                             </button>
                                         </>
                                     )}
 
-                                    {activeSettingsTab === 'quality' && (
+                                    {activeSettingsTab === 'quality' && !dataSaver && (
                                         <>
-                                            <button onClick={() => setActiveSettingsTab('main')} className="px-3 py-2 text-gray-400 hover:text-white border-b border-gray-700 mb-1 w-full text-left font-bold uppercase text-xs">← {t('quality')}</button>
+                                            <button onClick={() => setActiveSettingsTab('main')} className={`px-3 py-2 ${textSecondary} hover:${buttonText} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'} mb-1 w-full text-left font-bold uppercase text-xs`}>← {t('quality')}</button>
                                             {['auto', '1080p', '720p', '480p'].map(q => (
-                                                <button key={q} onClick={() => { setCurrentQuality(q); setActiveSettingsTab('main'); }} className={`px-3 py-2 hover:bg-white/10 rounded w-full text-left ${currentQuality === q ? 'text-red-500 font-bold' : 'text-gray-300'}`}>
+                                                <button key={q} onClick={() => { setCurrentQuality(q); setActiveSettingsTab('main'); }} className={`px-3 py-2 ${hoverItem} rounded w-full text-left ${currentQuality === q ? activeItem : isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     {q === 'auto' ? t('auto') : q}
                                                 </button>
                                             ))}
@@ -954,9 +1248,9 @@ const VideoPlayer: React.FC<{
 
                                     {activeSettingsTab === 'speed' && (
                                         <>
-                                            <button onClick={() => setActiveSettingsTab('main')} className="px-3 py-2 text-gray-400 hover:text-white border-b border-gray-700 mb-1 w-full text-left font-bold uppercase text-xs">← {t('speed')}</button>
+                                            <button onClick={() => setActiveSettingsTab('main')} className={`px-3 py-2 ${textSecondary} hover:${buttonText} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'} mb-1 w-full text-left font-bold uppercase text-xs`}>← {t('speed')}</button>
                                             {[0.5, 0.75, 1, 1.25, 1.5, 2].map(rate => (
-                                                <button key={rate} onClick={() => handleSpeedChange(rate)} className={`px-3 py-2 hover:bg-white/10 rounded w-full text-left ${playbackRate === rate ? 'text-red-500 font-bold' : 'text-gray-300'}`}>
+                                                <button key={rate} onClick={() => handleSpeedChange(rate)} className={`px-3 py-2 ${hoverItem} rounded w-full text-left ${playbackRate === rate ? activeItem : isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     {rate}x
                                                 </button>
                                             ))}
@@ -965,9 +1259,27 @@ const VideoPlayer: React.FC<{
 
                                     {activeSettingsTab === 'audio' && (
                                         <>
-                                            <button onClick={() => setActiveSettingsTab('main')} className="px-3 py-2 text-gray-400 hover:text-white border-b border-gray-700 mb-1 w-full text-left font-bold uppercase text-xs">← {t('audio')}</button>
+                                            <button onClick={() => setActiveSettingsTab('main')} className={`px-3 py-2 ${textSecondary} hover:${buttonText} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'} mb-1 w-full text-left font-bold uppercase text-xs`}>← {t('audio')}</button>
+                                            
+                                            {/* Feature 2: Spatial Audio Toggle */}
+                                            <div className={`flex justify-between items-center px-3 py-2 mb-2 ${isDark ? 'bg-white/5' : 'bg-gray-50'} rounded mx-2 border ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
+                                                <div className="flex flex-col">
+                                                    <div className="flex items-center space-x-1">
+                                                        <HeadphonesIcon className={`w-3 h-3 ${isDark ? 'text-white' : 'text-black'}`} />
+                                                        <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-black'}`}>{t('spatialAudio')}</span>
+                                                    </div>
+                                                    <span className="text-[9px] text-gray-500">{t('spatialAudioDesc')}</span>
+                                                </div>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); setSpatialAudio(!spatialAudio); }}
+                                                    className={`w-8 h-4 rounded-full relative transition-colors ${spatialAudio ? 'bg-blue-500' : 'bg-gray-600'}`}
+                                                >
+                                                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow-md transition-transform ${spatialAudio ? 'left-4.5' : 'left-0.5'}`} style={{ left: spatialAudio ? '18px' : '2px' }}></div>
+                                                </button>
+                                            </div>
+
                                             {['original', 'English', 'Spanish', 'Japanese'].map(track => (
-                                                <button key={track} onClick={() => { setCurrentAudio(track); setActiveSettingsTab('main'); }} className={`px-3 py-2 hover:bg-white/10 rounded w-full text-left ${currentAudio === track ? 'text-red-500 font-bold' : 'text-gray-300'}`}>
+                                                <button key={track} onClick={() => { setCurrentAudio(track); setActiveSettingsTab('main'); }} className={`px-3 py-2 ${hoverItem} rounded w-full text-left ${currentAudio === track ? activeItem : isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     {track}
                                                 </button>
                                             ))}
@@ -976,10 +1288,21 @@ const VideoPlayer: React.FC<{
 
                                     {activeSettingsTab === 'subtitles' && (
                                         <>
-                                            <button onClick={() => setActiveSettingsTab('main')} className="px-3 py-2 text-gray-400 hover:text-white border-b border-gray-700 mb-1 w-full text-left font-bold uppercase text-xs">← {t('subtitles')}</button>
+                                            <button onClick={() => setActiveSettingsTab('main')} className={`px-3 py-2 ${textSecondary} hover:${buttonText} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'} mb-1 w-full text-left font-bold uppercase text-xs`}>← {t('subtitles')}</button>
                                             {['off', 'English', 'Spanish', 'Japanese'].map(sub => (
-                                                <button key={sub} onClick={() => { setCurrentSubtitle(sub); setActiveSettingsTab('main'); }} className={`px-3 py-2 hover:bg-white/10 rounded w-full text-left ${currentSubtitle === sub ? 'text-red-500 font-bold' : 'text-gray-300'}`}>
+                                                <button key={sub} onClick={() => { setCurrentSubtitle(sub); setActiveSettingsTab('main'); }} className={`px-3 py-2 ${hoverItem} rounded w-full text-left ${currentSubtitle === sub ? activeItem : isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                                                     {sub === 'off' ? t('off') : sub}
+                                                </button>
+                                            ))}
+                                        </>
+                                    )}
+
+                                    {activeSettingsTab === 'theme' && (
+                                        <>
+                                            <button onClick={() => setActiveSettingsTab('main')} className={`px-3 py-2 ${textSecondary} hover:${buttonText} border-b ${isDark ? 'border-gray-700' : 'border-gray-200'} mb-1 w-full text-left font-bold uppercase text-xs`}>← Theme</button>
+                                            {['dark', 'light'].map(theme => (
+                                                <button key={theme} onClick={() => { setPlayerTheme(theme as 'dark' | 'light'); setActiveSettingsTab('main'); }} className={`px-3 py-2 ${hoverItem} rounded w-full text-left capitalize ${playerTheme === theme ? activeItem : isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                                                    {theme}
                                                 </button>
                                             ))}
                                         </>
@@ -1011,516 +1334,459 @@ const VideoPlayer: React.FC<{
     );
 };
 
-const ContentCard: React.FC<{ content: Content; onCardClick: () => void }> = ({ content, onCardClick }) => {
+// --- PAGE VIEWS ---
+
+const WatchlistView: React.FC<{ onSelect: (c: Content) => void }> = ({ onSelect }) => {
+    const { watchlist } = useWatchlist();
     const { t } = useLanguage();
-    return (
-        <div 
-            onClick={onCardClick}
-            className="group relative bg-[#181818] rounded-md overflow-hidden cursor-pointer transition-transform duration-300 hover:scale-105 hover:z-20"
-        >
-            <div className="aspect-[2/3] relative">
-                <img 
-                    src={content.thumbnailUrl} 
-                    alt={content.title} 
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors" />
-            </div>
-            <div className="p-3 opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent pt-8">
-                <h4 className="font-bold text-white text-sm truncate">{content.title}</h4>
-                <div className="flex items-center space-x-2 text-[10px] text-gray-300 mt-1">
-                    <span className="text-green-400 font-bold">{content.rating}</span>
-                    <span>{content.releaseYear}</span>
-                </div>
-                <div className="flex flex-wrap gap-1 mt-2">
-                    {content.genre.slice(0, 2).map((g, i) => (
-                        <span key={i} className="text-[9px] border border-gray-600 rounded px-1 text-gray-400">{g}</span>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-};
+    const items = MOCK_CONTENT.filter(c => watchlist.includes(c.id));
 
-const HeroBanner: React.FC<{ content: Content; onDetailsClick: () => void; onPlayClick: () => void }> = ({ content, onDetailsClick, onPlayClick }) => {
-    const { t } = useLanguage();
-    return (
-        <div className="relative h-[85vh] w-full">
-            <div className="absolute inset-0">
-                <img src={content.backdropUrl} alt={content.title} className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-r from-black via-black/50 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent" />
-            </div>
-            <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-8 lg:p-16 mb-16 flex flex-col justify-end items-start h-full">
-                <h1 className="text-5xl md:text-7xl font-bebas text-white mb-4 max-w-3xl leading-none drop-shadow-lg">{content.title}</h1>
-                <p className="text-white/90 text-sm md:text-lg mb-8 max-w-xl line-clamp-3 drop-shadow-md">{content.description}</p>
-                <div className="flex space-x-4">
-                    <button onClick={onPlayClick} className="flex items-center space-x-2 bg-white text-black px-6 md:px-8 py-2 md:py-3 rounded hover:bg-white/90 transition-colors font-bold text-sm md:text-base">
-                        <PlayIcon className="w-5 h-5 md:w-6 md:h-6" />
-                        <span>{t('play')}</span>
-                    </button>
-                    <button onClick={onDetailsClick} className="flex items-center space-x-2 bg-gray-500/50 backdrop-blur-sm text-white px-6 md:px-8 py-2 md:py-3 rounded hover:bg-gray-500/70 transition-colors font-bold text-sm md:text-base">
-                        <InfoIcon className="w-5 h-5 md:w-6 md:h-6" />
-                        <span>{t('moreInfo')}</span>
-                    </button>
+    if (items.length === 0) {
+        return (
+            <div className="pt-32 px-12 text-center min-h-[50vh]">
+                <h2 className="text-2xl font-bold mb-4">{t('myList')}</h2>
+                <p className="text-gray-400 mb-8">{t('emptyWatchlist')}</p>
+                <div className="bg-gray-900/50 p-8 rounded-xl max-w-2xl mx-auto border border-gray-800 text-left">
+                    <h3 className="text-xl font-bold mb-4 text-white">How to build your collection:</h3>
+                    <ul className="space-y-4 text-gray-300 text-sm">
+                        <li className="flex items-start">
+                            <span className="text-red-500 mr-2 font-bold">1.</span>
+                            Browse our extensive library of Movies and TV Shows.
+                        </li>
+                        <li className="flex items-start">
+                            <span className="text-red-500 mr-2 font-bold">2.</span>
+                            Click on any title to view details.
+                        </li>
+                        <li className="flex items-start">
+                            <span className="text-red-500 mr-2 font-bold">3.</span>
+                            Look for the "Add to List" button to save it for later.
+                        </li>
+                    </ul>
                 </div>
             </div>
-        </div>
-    );
-};
-
-const ContentRow: React.FC<{ title: string; contents: Content[]; onCardClick: (c: Content) => void; icon?: React.ReactNode; getProgress?: (id: string) => number }> = ({ title, contents, onCardClick, icon, getProgress }) => {
-    const scrollRef = useRef<HTMLDivElement>(null);
-    const [showControls, setShowControls] = useState(false);
-
-    const scroll = (direction: 'left' | 'right') => {
-        if (scrollRef.current) {
-            const current = scrollRef.current;
-            const scrollAmount = direction === 'left' ? -current.offsetWidth / 2 : current.offsetWidth / 2;
-            current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
-        }
-    };
-
-    if (contents.length === 0) return null;
+        );
+    }
 
     return (
-        <div 
-            className="mb-8 px-4 sm:px-6 lg:px-8 relative group/row"
-            onMouseEnter={() => setShowControls(true)}
-            onMouseLeave={() => setShowControls(false)}
-        >
-            <h3 className="text-xl md:text-2xl font-bold text-white mb-4 flex items-center space-x-2">
-                {icon && <span>{icon}</span>}
-                <span>{title}</span>
-            </h3>
-            
-            <div className="relative">
-                <button 
-                    onClick={() => scroll('left')} 
-                    className={`absolute left-0 top-0 bottom-0 z-10 bg-black/50 hover:bg-black/70 w-12 flex items-center justify-center transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
-                >
-                    <span className="text-white text-4xl">‹</span>
-                </button>
-
-                <div 
-                    ref={scrollRef}
-                    className="flex space-x-4 overflow-x-auto scrollbar-hide pb-4 pt-4 scroll-smooth"
-                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                >
-                    {contents.map((content) => (
-                        <div key={content.id} className="flex-none w-[160px] md:w-[200px] relative">
-                            <ContentCard content={content} onCardClick={() => onCardClick(content)} />
-                            {getProgress && (
-                                <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-700 rounded-full mt-2 mx-1 overflow-hidden">
-                                    <div 
-                                        className="h-full bg-red-600" 
-                                        style={{ width: `${getProgress(content.id)}%` }} 
-                                    />
-                                </div>
-                            )}
+        <div className="pt-24 px-4 sm:px-12 pb-12 min-h-screen">
+            <h2 className="text-3xl font-bebas text-white mb-6">{t('myList')}</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {items.map(item => (
+                    <div key={item.id} onClick={() => onSelect(item)} className="aspect-[2/3] bg-gray-800 rounded overflow-hidden cursor-pointer hover:scale-105 transition-transform relative group">
+                        <img src={item.thumbnailUrl} className="w-full h-full object-cover" alt={item.title} />
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                             <PlayIcon className="w-10 h-10 text-white" />
                         </div>
-                    ))}
-                </div>
-
-                <button 
-                    onClick={() => scroll('right')} 
-                    className={`absolute right-0 top-0 bottom-0 z-10 bg-black/50 hover:bg-black/70 w-12 flex items-center justify-center transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
-                >
-                    <span className="text-white text-4xl">›</span>
-                </button>
+                    </div>
+                ))}
             </div>
         </div>
     );
 };
 
-const CallsPage: React.FC = () => {
+const CallsView: React.FC = () => {
     const { t } = useLanguage();
-    const [roomName, setRoomName] = useState('');
-    const [displayName, setDisplayName] = useState('');
-    const [isInCall, setIsInCall] = useState(false);
-    const jitsiContainerRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        // Load Jitsi script
-        const script = document.createElement('script');
-        script.src = 'https://meet.jit.si/external_api.js';
-        script.async = true;
-        document.body.appendChild(script);
-        return () => {
-            document.body.removeChild(script);
-        };
+        if (window.JitsiMeetExternalAPI && containerRef.current) {
+            const domain = 'meet.jit.si';
+            const options = {
+                roomName: 'SeikoYTCommunityRoom_Main',
+                width: '100%',
+                height: 600,
+                parentNode: containerRef.current,
+                theme: 'dark',
+                configOverwrite: { startWithAudioMuted: true },
+            };
+            const api = new window.JitsiMeetExternalAPI(domain, options);
+            return () => api.dispose();
+        }
     }, []);
 
-    const startCall = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (roomName && displayName) {
-            setIsInCall(true);
-            // We need to wait a bit for the container to render
-            setTimeout(() => {
-                if (window.JitsiMeetExternalAPI && jitsiContainerRef.current) {
-                    const domain = 'meet.jit.si';
-                    const options = {
-                        roomName: `SeikoYT-${roomName}`,
-                        width: '100%',
-                        height: '100%',
-                        parentNode: jitsiContainerRef.current,
-                        userInfo: {
-                            displayName: displayName
-                        },
-                        configOverwrite: {
-                            startWithAudioMuted: true,
-                            startWithVideoMuted: true
-                        },
-                        interfaceConfigOverwrite: {
-                            SHOW_JITSI_WATERMARK: false
-                        }
-                    };
-                    const api = new window.JitsiMeetExternalAPI(domain, options);
-                    api.addEventListener('videoConferenceLeft', () => {
-                        setIsInCall(false);
-                        api.dispose();
-                    });
-                }
-            }, 100);
-        }
-    };
-
     return (
-        <div className="pt-28 pb-16 px-4 sm:px-6 lg:px-8 min-h-screen flex flex-col items-center">
-            {!isInCall ? (
-                <div className="w-full max-w-md bg-[#181818] p-8 rounded-xl border border-gray-800 shadow-2xl">
-                    <div className="text-center mb-8">
-                        <PhoneIcon className="w-16 h-16 text-red-500 mx-auto mb-4" />
-                        <h2 className="text-3xl font-bebas text-white">{t('calls')}</h2>
-                        <p className="text-gray-400 mt-2 text-sm">{t('callsDescription')}</p>
-                    </div>
-                    
-                    <form onSubmit={startCall} className="space-y-6">
-                        <div>
-                            <label className="block text-gray-400 text-xs uppercase font-bold mb-2">{t('roomName')}</label>
-                            <input 
-                                type="text" 
-                                value={roomName}
-                                onChange={(e) => setRoomName(e.target.value)}
-                                placeholder={t('enterRoomName')}
-                                className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-colors"
-                                required
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-gray-400 text-xs uppercase font-bold mb-2">{t('displayName')}</label>
-                            <input 
-                                type="text" 
-                                value={displayName}
-                                onChange={(e) => setDisplayName(e.target.value)}
-                                placeholder={t('enterDisplayName')}
-                                className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-red-500 transition-colors"
-                                required
-                            />
-                        </div>
-                        <button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center space-x-2">
-                            <PhoneIcon className="w-5 h-5" />
-                            <span>{t('joinCall')}</span>
-                        </button>
-                    </form>
+        <div className="pt-24 px-4 sm:px-12 pb-12 min-h-screen animate-fade-in">
+             <h2 className="text-3xl font-bebas text-white mb-6">{t('calls')}</h2>
+             
+             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+                <div className="lg:col-span-2">
+                     <p className="text-gray-300 mb-6 text-lg">{t('callsDescription')}</p>
+                     <div ref={containerRef} className="w-full bg-gray-900 rounded-xl overflow-hidden shadow-2xl min-h-[500px] border border-gray-800 relative flex items-center justify-center">
+                        {!window.JitsiMeetExternalAPI && (
+                            <div className="text-center p-8">
+                                <PhoneIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                                <h3 className="text-xl font-bold text-white mb-2">Join the Conversation</h3>
+                                <p className="text-gray-400">Loading secure video room...</p>
+                            </div>
+                        )}
+                     </div>
                 </div>
-            ) : (
-                <div className="w-full h-[80vh] bg-black rounded-xl overflow-hidden border border-gray-800 relative">
-                     <div ref={jitsiContainerRef} className="w-full h-full" />
-                     <button 
-                        onClick={() => setIsInCall(false)}
-                        className="absolute top-4 left-4 bg-black/50 text-white px-4 py-2 rounded-full hover:bg-red-600 transition-colors z-10"
-                     >
-                         {t('exit')}
-                     </button>
-                </div>
-            )}
-        </div>
-    );
-};
-
-const Footer: React.FC = () => {
-    const { t } = useLanguage();
-    const [showChangelog, setShowChangelog] = useState(false);
-    return (
-        <footer className="bg-black py-8 mt-12 border-t border-gray-800/50">
-            <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                {/* AdSense Unit in Footer */}
-                <AdUnit slot="FOOTER_AD_SLOT" className="opacity-60 grayscale hover:grayscale-0 transition-all" />
                 
-                <div className="flex flex-col md:flex-row items-center justify-between mb-8">
-                    <div className="flex space-x-6 mb-4 md:mb-0">
-                        <a href="https://www.youtube.com/@Seiko_EsposodeGabi" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[#FF0000] transition-colors"><YouTubeIcon className="w-6 h-6" /></a>
-                        <a href="https://instagram.com/seikovt_esposodegabi" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[#E4405F] transition-colors"><InstagramIcon className="w-6 h-6" /></a>
-                        <a href="https://tiktok.com/@seikovt1" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[#00F2EA] transition-colors"><TikTokIcon className="w-6 h-6" /></a>
-                        <a href="https://discord.gg/fdDkGA7MWP" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-[#5865F2] transition-colors"><DiscordIcon className="w-6 h-6" /></a>
+                <div className="bg-[#181818] p-6 rounded-xl border border-gray-800 h-fit">
+                    <h3 className="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">Community Guidelines</h3>
+                    <ul className="space-y-4 text-sm text-gray-400">
+                        <li className="flex items-start">
+                            <span className="w-2 h-2 bg-red-500 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
+                            <span><strong>Respect Everyone:</strong> Treat all members with kindness and respect. Harassment is not tolerated.</span>
+                        </li>
+                        <li className="flex items-start">
+                            <span className="w-2 h-2 bg-red-500 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
+                            <span><strong>No Spoilers:</strong> Please use spoiler warnings when discussing recent episodes.</span>
+                        </li>
+                        <li className="flex items-start">
+                            <span className="w-2 h-2 bg-red-500 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
+                            <span><strong>Keep it Clean:</strong> Avoid inappropriate language or content in public rooms.</span>
+                        </li>
+                        <li className="flex items-start">
+                            <span className="w-2 h-2 bg-red-500 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
+                            <span><strong>Have Fun:</strong> Share your theories, fan art, and love for the shows!</span>
+                        </li>
+                    </ul>
+                    
+                    <div className="mt-8 pt-6 border-t border-gray-800">
+                        <h4 className="text-white font-bold mb-2">Live Schedule</h4>
+                        <div className="bg-white/5 p-3 rounded text-xs text-gray-400">
+                            <div className="flex justify-between mb-1"><span>Fridays</span> <span className="text-white">8:00 PM EST</span></div>
+                            <div>Weekly Fan Theory Discussion</div>
+                        </div>
                     </div>
-                    <div className="text-center md:text-right"><h4 className="text-red-500 font-bebas text-2xl tracking-wider">SEIKOYT</h4><p className="text-gray-500 text-xs mt-1">{t('joinCommunity')}</p></div>
                 </div>
-                <div className="text-center text-gray-600 text-xs border-t border-gray-900 pt-8 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
-                    <div><p>{t('copyright')}</p></div>
-                    <div className="flex space-x-4">
-                        <a href="#" className="text-gray-500 hover:text-white transition-colors">{t('privacyPolicy')}</a>
-                        <a href="#" className="text-gray-500 hover:text-white transition-colors">{t('termsOfService')}</a>
-                    </div>
-                    <button onClick={() => setShowChangelog(true)} className="text-gray-500 hover:text-red-500 transition-colors font-bold uppercase tracking-widest text-[10px] bg-white/5 px-4 py-1.5 rounded-full border border-white/10">{t('changelog')}</button>
-                </div>
-            </div>
-            {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
-        </footer>
-    );
-};
-
-export default function App() {
-    return (
-        <LanguageProvider><WatchlistProvider><UserHistoryProvider><MainApp /></UserHistoryProvider></WatchlistProvider></LanguageProvider>
+             </div>
+        </div>
     );
 }
 
-function MainApp() {
-    const [currentPage, setCurrentPage] = useState<Page>(() => (typeof window !== 'undefined' && sessionStorage.getItem('seikoyt_call_active')) ? 'calls' : 'home');
-    const [activeModal, setActiveModal] = useState(false);
-    const [selectedContent, setSelectedContent] = useState<Content | null>(null);
-    const [isLoadingContent, setIsLoadingContent] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [playerState, setPlayerState] = useState<{ id: string; url: string; title: string; description: string; introStart?: number; introEnd?: number } | null>(null);
-    const [isMiniPlayer, setIsMiniPlayer] = useState(false);
-    const { history, watchProgress, likedContent, searchHistory, toggleLike, toggleDislike, isLiked, isDisliked } = useUserHistory();
+const MinigamesView: React.FC = () => {
     const { t } = useLanguage();
+    return (
+        <div className="pt-24 px-4 sm:px-12 pb-12 min-h-screen text-center animate-fade-in">
+            <h2 className="text-3xl font-bebas text-white mb-6">{t('minigames')}</h2>
+            <p className="text-gray-400 max-w-2xl mx-auto mb-12">Take a break from watching and challenge yourself with our exclusive arcade collection. Compete for the high score!</p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                {['Space Shooter', 'Dino Run', 'Memory Match'].map((game, i) => (
+                    <div key={i} className="bg-[#181818] rounded-xl overflow-hidden hover:bg-[#202020] transition-colors cursor-pointer group border border-gray-800 flex flex-col h-full">
+                        <div className="h-40 bg-gray-800 flex items-center justify-center relative overflow-hidden">
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#181818] to-transparent opacity-50"></div>
+                            <GamepadIcon className="w-20 h-20 text-red-500 group-hover:scale-110 transition-transform relative z-10" />
+                        </div>
+                        <div className="p-6 flex-1 flex flex-col text-left">
+                            <h3 className="text-xl font-bold text-white mb-2">{game}</h3>
+                            <p className="text-gray-400 text-sm mb-4 flex-1">
+                                {i === 0 && "Defend the galaxy against alien invaders in this classic retro shooter."}
+                                {i === 1 && "Run as far as you can while dodging obstacles in this endless runner."}
+                                {i === 2 && "Test your brain power by matching characters from your favorite shows."}
+                            </p>
+                            <button className="w-full bg-white/10 hover:bg-red-600 text-white font-bold py-2 rounded transition-colors text-sm uppercase tracking-wide">
+                                {t('playGame')}
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="mt-16 bg-[#181818] p-8 rounded-xl max-w-4xl mx-auto border border-gray-800">
+                <h3 className="text-2xl font-bold text-white mb-6">Leaderboard</h3>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm text-gray-400">
+                        <thead className="text-xs uppercase bg-white/5 text-gray-200">
+                            <tr>
+                                <th className="px-6 py-3">Rank</th>
+                                <th className="px-6 py-3">Player</th>
+                                <th className="px-6 py-3">Game</th>
+                                <th className="px-6 py-3">Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr className="border-b border-gray-800 hover:bg-white/5">
+                                <td className="px-6 py-4 font-bold text-yellow-500">#1</td>
+                                <td className="px-6 py-4 text-white">SeikoFan99</td>
+                                <td className="px-6 py-4">Space Shooter</td>
+                                <td className="px-6 py-4">12,450</td>
+                            </tr>
+                            <tr className="border-b border-gray-800 hover:bg-white/5">
+                                <td className="px-6 py-4 font-bold text-gray-400">#2</td>
+                                <td className="px-6 py-4 text-white">MovieBuff22</td>
+                                <td className="px-6 py-4">Dino Run</td>
+                                <td className="px-6 py-4">8,920</td>
+                            </tr>
+                            <tr className="hover:bg-white/5">
+                                <td className="px-6 py-4 font-bold text-orange-700">#3</td>
+                                <td className="px-6 py-4 text-white">AnimeLoverX</td>
+                                <td className="px-6 py-4">Memory Match</td>
+                                <td className="px-6 py-4">5,300</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// --- APP COMPONENT ---
+
+const MainLayout: React.FC = () => {
+    const [currentPage, setCurrentPage] = useState<Page>('home');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedContent, setSelectedContent] = useState<Content | null>(null);
+    const [isMiniMode, setIsMiniMode] = useState(false);
+    const [showChangelog, setShowChangelog] = useState(false);
     
-    // Series State
-    const [playingContent, setPlayingContent] = useState<Content | null>(null);
-    const [playingEpisode, setPlayingEpisode] = useState<Episode | null>(null);
+    const { t } = useLanguage();
+    const { history, searchHistory } = useUserHistory();
+    const [recommendations, setRecommendations] = useState<string[]>([]);
     
-    // AI Recommendations State
-    const [aiRecommendations, setAiRecommendations] = useState<string[]>([]);
-    const [isGeneratingRecs, setIsGeneratingRecs] = useState(false);
-
-    const featuredContent = useMemo(() => MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0], []);
-    const genres = useMemo(() => [...new Set(MOCK_CONTENT.flatMap(c => c.genre))], []);
-    const filteredContent = useMemo(() => searchQuery ? MOCK_CONTENT.filter(c => c.title.toLowerCase().includes(searchQuery.toLowerCase())) : [], [searchQuery]);
-
-    // Simplified catalog for Gemini to save tokens
-    const simplifiedCatalog = useMemo(() => MOCK_CONTENT.map(c => ({
-        id: c.id,
-        title: c.title,
-        description: c.description,
-        genre: c.genre
-    })), []);
-
+    // Fetch Recommendations
     useEffect(() => {
-        // Debounce generation to avoid excessive API calls
-        const timer = setTimeout(async () => {
-            if (history.length > 0 || likedContent.length > 0 || searchHistory.length > 0) {
-                setIsGeneratingRecs(true);
-                const watchedTitles = MOCK_CONTENT.filter(c => history.includes(c.id)).map(c => c.title);
-                const likedTitles = MOCK_CONTENT.filter(c => likedContent.includes(c.id)).map(c => c.title);
-                
-                const recIds = await getPersonalizedRecommendations(watchedTitles, likedTitles, searchHistory, simplifiedCatalog);
-                setAiRecommendations(recIds);
-                setIsGeneratingRecs(false);
+        const fetchRecs = async () => {
+            if (history.length > 0) {
+                 const recIds = await getPersonalizedRecommendations(history, [], searchHistory, MOCK_CONTENT);
+                 setRecommendations(recIds);
             }
-        }, 2000); // Wait 2 seconds after mount/update before fetching
+        };
+        fetchRecs();
+    }, [history, searchHistory]);
 
-        return () => clearTimeout(timer);
-    }, [history, likedContent, searchHistory, simplifiedCatalog]);
-
-    const recommendedContent = useMemo(() => {
-        // If AI returned specific IDs, use them
-        if (aiRecommendations.length > 0) {
-            return MOCK_CONTENT.filter(c => aiRecommendations.includes(c.id));
-        }
-
-        // Fallback to genre-based logic
-        if (history.length === 0 && likedContent.length === 0) return [];
-        
-        const genreCounts: Record<string, number> = {};
-        const combinedIds = [...new Set([...history, ...likedContent])];
-        
-        MOCK_CONTENT.filter(c => combinedIds.includes(c.id)).forEach(c => c.genre.forEach(g => genreCounts[g] = (genreCounts[g] || 0) + 1));
-        
-        return MOCK_CONTENT.filter(c => !combinedIds.includes(c.id)).sort((a, b) => 
-            b.genre.reduce((acc, g) => acc + (genreCounts[g] || 0), 0) - a.genre.reduce((acc, g) => acc + (genreCounts[g] || 0), 0)
-        ).slice(0, 10);
-    }, [history, likedContent, aiRecommendations]);
-
-    const continueWatchingContent = useMemo(() => MOCK_CONTENT.filter(c => { const p = watchProgress[c.id]; return p && (p.currentTime / p.duration) < 0.95; }).sort((a, b) => (watchProgress[b.id]?.lastWatched || 0) - (watchProgress[a.id]?.lastWatched || 0)), [watchProgress]);
-
-    const handleCardClick = useCallback((content: Content) => { setIsLoadingContent(true); setTimeout(() => { setSelectedContent(content); setActiveModal(true); setIsLoadingContent(false); }, 600); }, []);
-    
-    // Enhanced play handler that supports series and episodes
-    const handlePlayContent = (content: Content, episode?: Episode) => {
-        let targetEpisode = episode;
-        
-        // If it's a series and no episode specified, try to find the first episode
-        if (content.type === 'series' && !targetEpisode) {
-            targetEpisode = getFirstEpisode(content);
-        }
-
-        // Logic for Series
-        if (content.type === 'series') {
-             if (targetEpisode) {
-                 // Playing an episode
-                 setPlayerState({ 
-                    id: targetEpisode.id, 
-                    url: targetEpisode.videoUrl, 
-                    title: `${content.title}: ${targetEpisode.title}`, 
-                    description: targetEpisode.description,
-                    introStart: targetEpisode.introStart,
-                    introEnd: targetEpisode.introEnd
-                 });
-                 setPlayingContent(content);
-                 setPlayingEpisode(targetEpisode);
-                 setIsMiniPlayer(false);
-                 setActiveModal(false);
-                 return;
-             } 
-             // Fallback if series has no seasons/episodes structure but has a main videoUrl (unlikely given MOCK_CONTENT but good for safety)
-             else if (content.videoUrl) {
-                 setPlayerState({ 
-                    id: content.id, 
-                    url: content.videoUrl, 
-                    title: content.title, 
-                    description: content.description,
-                    introStart: content.introStart,
-                    introEnd: content.introEnd
-                 });
-                 setPlayingContent(content);
-                 setPlayingEpisode(null);
-                 setIsMiniPlayer(false);
-                 setActiveModal(false);
-                 return;
-             }
-             // No playable content found
-             console.warn("No playable content found for series");
-             return;
-        }
-
-        // Logic for Movies
-        if (content.videoUrl) {
-            setPlayerState({ 
-                id: content.id, 
-                url: content.videoUrl, 
-                title: content.title, 
-                description: content.description,
-                introStart: content.introStart,
-                introEnd: content.introEnd
-            });
-            setPlayingContent(content);
-            setPlayingEpisode(null);
-            setIsMiniPlayer(false);
-            setActiveModal(false);
-        }
+    // Handle Content Selection (Play)
+    const handlePlay = (content: Content) => {
+        setSelectedContent(content);
+        setIsMiniMode(false);
     };
 
-    const handleNextEpisode = () => {
-        if (playingContent && playingEpisode) {
-            const next = getNextEpisode(playingContent, playingEpisode.id);
-            if (next) {
-                handlePlayContent(playingContent, next);
-            }
+    // Filter Logic with Secret Codes (Feature 3)
+    const searchResults = useMemo(() => {
+        if (!searchQuery) return [];
+        const lower = searchQuery.toLowerCase().trim();
+
+        // Secret Codes Logic
+        const SECRET_CODES: Record<string, string[]> = {
+            '6721': ['Sci-Fi', 'Fantasy', 'Animation'], // Anime Sci-Fi Proxy
+            '3652': ['History', 'Drama', 'Documentary'], // Bio Docs Proxy
+            '8195': ['Horror', 'Thriller'] // B-Horror Proxy
+        };
+
+        if (SECRET_CODES[lower]) {
+            const genres = SECRET_CODES[lower];
+            // Filter content that matches any of the secret genres
+            return MOCK_CONTENT.filter(c => c.genre.some(g => genres.includes(g)));
+        }
+
+        return MOCK_CONTENT.filter(c => c.title.toLowerCase().includes(lower) || c.description.toLowerCase().includes(lower));
+    }, [searchQuery]);
+
+    // Helper to check if current search is a secret code
+    const isSecretCodeActive = useMemo(() => {
+        return ['6721', '3652', '8195'].includes(searchQuery.trim());
+    }, [searchQuery]);
+
+    const getSecretTitle = () => {
+        if (searchQuery.trim() === '6721') return t('secretGenre1');
+        if (searchQuery.trim() === '3652') return t('secretGenre2');
+        if (searchQuery.trim() === '8195') return t('secretGenre3');
+        return '';
+    };
+
+    const featured = MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0];
+    const recContent = recommendations.map(id => MOCK_CONTENT.find(c => c.id === id)).filter(Boolean) as Content[];
+    // Fill if empty
+    const displayRecs = recContent.length > 0 ? recContent : MOCK_CONTENT.slice(0, 10);
+
+    const renderContent = () => {
+        if (searchQuery) {
+            return (
+                <div className="pt-24 px-4 sm:px-8 pb-12 min-h-screen animate-fade-in">
+                    <h2 className="text-2xl text-white mb-6 font-bold flex items-center gap-2">
+                        {isSecretCodeActive ? (
+                            <>
+                                <span className="text-yellow-400 animate-pulse">🔓 {t('secretUnlocked')}</span>
+                                <span className="text-gray-400 text-sm ml-2">({getSecretTitle()})</span>
+                            </>
+                        ) : (
+                            `${t('searchResults')} "${searchQuery}"`
+                        )}
+                    </h2>
+                    {searchResults.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {searchResults.map(item => (
+                                <div key={item.id} onClick={() => handlePlay(item)} className="cursor-pointer group relative aspect-[2/3] rounded-lg overflow-hidden bg-gray-800 transition-transform hover:scale-105">
+                                    <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                        <PlayIcon className="w-12 h-12 text-white" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-gray-400 text-center mt-12">{t('noMatches')} "{searchQuery}"</div>
+                    )}
+                </div>
+            );
+        }
+
+        switch(currentPage) {
+            case 'home':
+                return (
+                    <div className="pb-20 animate-fade-in">
+                        {featured && (
+                            <div className="relative h-[85vh] w-full">
+                                <div className="absolute inset-0">
+                                    <img src={featured.backdropUrl} className="w-full h-full object-cover" alt="Hero" />
+                                    <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-transparent to-transparent" />
+                                    <div className="absolute inset-0 bg-gradient-to-r from-[#141414]/90 via-black/20 to-transparent" />
+                                </div>
+                                <div className="absolute bottom-0 left-0 p-8 sm:p-16 max-w-2xl space-y-5">
+                                    <div className="flex items-center space-x-2 mb-2">
+                                         <span className="text-red-600 font-black tracking-widest uppercase text-xs">Featured</span>
+                                    </div>
+                                    <h1 className="text-5xl sm:text-7xl font-black text-white font-bebas drop-shadow-xl leading-none">{featured.title}</h1>
+                                    
+                                    <div className="flex items-center space-x-4 text-sm font-bold text-gray-300">
+                                        <span className="text-green-400">98% Match</span>
+                                        <span>{featured.releaseYear}</span>
+                                        <span className="border border-gray-500 px-1.5 py-0.5 rounded text-xs">{featured.rating}</span>
+                                        <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-xs">HD</span>
+                                    </div>
+
+                                    <p className="text-gray-200 text-lg line-clamp-3 drop-shadow-md leading-relaxed">{featured.description}</p>
+                                    
+                                    <div className="flex space-x-4 pt-4">
+                                        <button onClick={() => handlePlay(featured)} className="bg-white text-black px-8 py-3.5 rounded-lg font-bold flex items-center space-x-2 hover:bg-gray-200 transition-colors transform hover:scale-105 duration-200">
+                                            <PlayIcon className="w-6 h-6" />
+                                            <span>{t('play')}</span>
+                                        </button>
+                                        <button className="bg-gray-600/60 backdrop-blur-md text-white px-8 py-3.5 rounded-lg font-bold flex items-center space-x-2 hover:bg-gray-600/80 transition-colors">
+                                            <InfoIcon className="w-6 h-6" />
+                                            <span>{t('moreInfo')}</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        <div className="px-4 sm:px-12 -mt-32 relative z-10 space-y-12">
+                             {/* Recommended Row */}
+                             <section>
+                                <h3 className="text-white font-bold text-xl mb-4 flex items-center space-x-2">
+                                    <span>{t('recommendedForYou')}</span>
+                                    <SparklesIcon className="w-4 h-4 text-yellow-500" />
+                                </h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+                                    {displayRecs.map(item => (
+                                        <div key={item.id} onClick={() => handlePlay(item)} className="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300 group relative shadow-lg">
+                                            <img src={item.thumbnailUrl} className="w-full h-full object-cover" loading="lazy" alt={item.title} />
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                                                <div className="flex justify-center mb-4">
+                                                    <div className="bg-red-600 rounded-full p-2 hover:scale-110 transition-transform">
+                                                        <PlayIcon className="w-6 h-6 text-white" />
+                                                    </div>
+                                                </div>
+                                                <h4 className="text-white text-xs font-bold truncate">{item.title}</h4>
+                                                <div className="flex justify-between items-center text-[10px] text-gray-300 mt-1">
+                                                    <span>{item.releaseYear}</span>
+                                                    <span className="border border-gray-500 px-1 rounded">{item.rating}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                             </section>
+
+                             <AdUnit slot="home_middle" />
+
+                             {/* Trending Row (Mock) */}
+                             <section>
+                                <h3 className="text-white font-bold text-xl mb-4">Trending Now</h3>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+                                    {MOCK_CONTENT.slice(5, 17).map(item => (
+                                        <div key={item.id} onClick={() => handlePlay(item)} className="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300 group relative shadow-lg">
+                                            <img src={item.thumbnailUrl} className="w-full h-full object-cover" loading="lazy" alt={item.title} />
+                                            <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">TOP 10</div>
+                                        </div>
+                                    ))}
+                                </div>
+                             </section>
+                        </div>
+                        <AboutSection />
+                        <div className="text-center text-gray-600 text-xs py-8 border-t border-gray-900/50 mt-12 bg-black">
+                             {t('copyright')}
+                        </div>
+                    </div>
+                );
+            case 'movies':
+                 return (
+                    <div className="pt-24 px-4 sm:px-12 pb-12 min-h-screen animate-fade-in">
+                        <div className="flex justify-between items-end mb-6">
+                            <h2 className="text-3xl text-white font-bebas">{t('allMovies')}</h2>
+                            <div className="text-sm text-gray-400">Showing {MOCK_CONTENT.filter(c => c.type === 'movie').length} Titles</div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                            {MOCK_CONTENT.filter(c => c.type === 'movie').map(item => (
+                                <div key={item.id} onClick={() => handlePlay(item)} className="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform group relative">
+                                    <img src={item.thumbnailUrl} className="w-full h-full object-cover" alt={item.title} />
+                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                        <PlayIcon className="w-12 h-12 text-white opacity-80" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                 );
+            case 'watchlist':
+                 return <WatchlistView onSelect={handlePlay} />;
+            case 'calls':
+                 return <CallsView />;
+            case 'minigames':
+                 return <MinigamesView />;
+            default:
+                return null;
         }
     };
-    
-    const hasNextEpisode = useMemo(() => {
-        if (playingContent && playingEpisode) {
-            return !!getNextEpisode(playingContent, playingEpisode.id);
-        }
-        return false;
-    }, [playingContent, playingEpisode]);
 
     return (
-        <div className="bg-black min-h-screen text-white relative">
+        <div className="bg-[#141414] min-h-screen text-white font-sans selection:bg-red-500 selection:text-white">
             <Snowfall />
-            {isLoadingContent && <LoadingOverlay />}
-            <Header onNavigate={setCurrentPage} currentPage={currentPage} onSearch={(q) => { setSearchQuery(q); if (q) setCurrentPage('search'); else setCurrentPage('home'); }} searchQuery={searchQuery} />
+            <Header 
+                currentPage={currentPage} 
+                onNavigate={setCurrentPage} 
+                onSearch={setSearchQuery} 
+                searchQuery={searchQuery} 
+            />
             
-            <main>
-                {currentPage === 'home' ? (
-                    <>
-                        <HeroBanner content={featuredContent} onDetailsClick={() => handleCardClick(featuredContent)} onPlayClick={() => handlePlayContent(featuredContent)} />
-                        <div className="relative z-20 -mt-28 space-y-4">
-                            {continueWatchingContent.length > 0 && <ContentRow title={t('continueWatching')} contents={continueWatchingContent} onCardClick={handleCardClick} getProgress={(id) => (watchProgress[id].currentTime / watchProgress[id].duration) * 100} />}
-                            
-                            {/* AdSense Unit after first row - Wrapped in conditional logic usually, but here just placed */}
-                            <AdUnit slot="CONTENT_MIDDLE_AD_SLOT" />
+            {renderContent()}
 
-                            {recommendedContent.length > 0 && (
-                                <ContentRow 
-                                    title={isGeneratingRecs ? t('generatingRecommendations') : t('recommendedForYou')} 
-                                    contents={recommendedContent} 
-                                    onCardClick={handleCardClick} 
-                                    icon={<SparklesIcon className={`w-6 h-6 text-yellow-400 ${isGeneratingRecs ? 'animate-pulse' : ''}`} />}
-                                />
-                            )}
-                            
-                            {genres.map(genre => <ContentRow key={genre} title={genre} contents={MOCK_CONTENT.filter(c => c.genre.includes(genre))} onCardClick={handleCardClick} />)}
-                            
-                            {/* SEO / Content Section for AdSense */}
-                            <AboutSection />
-                        </div>
-                    </>
-                ) : currentPage === 'search' ? (
-                    <div className="pt-28 pb-16 px-4 sm:px-6 lg:px-8 min-h-screen">
-                        <h2 className="text-4xl font-bebas mb-8">{t('searchResults')} "{searchQuery}"</h2>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">{filteredContent.map(c => <ContentCard key={c.id} content={c} onCardClick={() => handleCardClick(c)} />)}</div>
-                    </div>
-                ) : currentPage === 'watchlist' ? (
-                    <div className="pt-28 pb-16 px-4 sm:px-6 lg:px-8 min-h-screen">
-                        <h2 className="text-4xl font-bebas mb-8">{t('myList')}</h2>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">{MOCK_CONTENT.filter(c => useWatchlist().watchlist.includes(c.id)).map(c => <ContentCard key={c.id} content={c} onCardClick={() => handleCardClick(c)} />)}</div>
-                    </div>
-                ) : currentPage === 'calls' ? <CallsPage /> : null}
-            </main>
-
-            {playerState && (
+            {selectedContent && (
                 <VideoPlayer 
-                    {...playerState} 
-                    src={playerState.url} 
-                    onClose={() => setPlayerState(null)} 
-                    isMiniMode={isMiniPlayer} 
-                    toggleMiniMode={() => setIsMiniPlayer(!isMiniPlayer)}
-                    onNext={handleNextEpisode}
-                    hasNextEpisode={hasNextEpisode}
+                    id={selectedContent.id}
+                    src={selectedContent.videoUrl || ''}
+                    title={selectedContent.title}
+                    description={selectedContent.description}
+                    introStart={selectedContent.introStart}
+                    introEnd={selectedContent.introEnd}
+                    onClose={() => setSelectedContent(null)}
+                    isMiniMode={isMiniMode}
+                    toggleMiniMode={() => setIsMiniMode(!isMiniMode)}
+                    hasNextEpisode={false} // Would implement for series
+                    hasPreviousEpisode={false}
+                    drm={selectedContent.drm}
                 />
             )}
             
-            {activeModal && selectedContent && (
-                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-fade-in" onClick={() => setActiveModal(false)}>
-                    <div className="bg-[#181818] rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                        <div className="relative aspect-video">
-                            <img src={selectedContent.backdropUrl} className="w-full h-full object-cover" />
-                            <button onClick={() => setActiveModal(false)} className="absolute top-4 right-4 bg-black/50 p-2 rounded-full"><CloseIcon className="w-6 h-6" /></button>
-                            <div className="absolute bottom-0 left-0 p-8 w-full bg-gradient-to-t from-[#181818] to-transparent">
-                                <h2 className="text-4xl font-bebas">{selectedContent.title}</h2>
-                                <div className="mt-4 flex space-x-4 items-center">
-                                    <button onClick={() => handlePlayContent(selectedContent)} className="bg-white text-black px-6 py-2 rounded font-bold">{t('play')}</button>
-                                    <button onClick={() => toggleLike(selectedContent.id)} className={`p-2 rounded-full border border-white/20 hover:bg-white/10 ${isLiked(selectedContent.id) ? 'text-green-500' : 'text-white'}`}>
-                                        <ThumbUpIcon className="w-5 h-5" filled={isLiked(selectedContent.id)} />
-                                    </button>
-                                    <button onClick={() => toggleDislike(selectedContent.id)} className={`p-2 rounded-full border border-white/20 hover:bg-white/10 ${isDisliked(selectedContent.id) ? 'text-red-500' : 'text-white'}`}>
-                                        <ThumbDownIcon className="w-5 h-5" filled={isDisliked(selectedContent.id)} />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="p-8 grid grid-cols-1 md:grid-cols-3 gap-8">
-                            <div className="md:col-span-2">
-                                <p className="text-gray-300">{selectedContent.description}</p>
-                                <AdUnit slot="MODAL_AD_SLOT" className="mt-8" />
-                                <div className="mt-12"><HyvorTalkComments website-id="14533" page-id={selectedContent.id} /></div>
-                            </div>
-                            <div className="text-sm space-y-4">
-                                <div><span className="text-gray-500">{t('genresLabel')}</span> {selectedContent.genre.join(', ')}</div>
-                                <div><span className="text-gray-500">{t('releaseLabel')}</span> {selectedContent.releaseYear}</div>
-                                <div><span className="text-gray-500">{t('ratingLabel')}</span> {selectedContent.rating}</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-            <Footer />
+            <button onClick={() => setShowChangelog(true)} className="fixed bottom-4 left-4 text-[10px] text-gray-600 hover:text-white transition-colors z-40 bg-black/20 px-2 py-1 rounded border border-gray-800">v2.4.1</button>
+            {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
         </div>
     );
-}
+};
+
+const App: React.FC = () => {
+    return (
+        <LanguageProvider>
+            <WatchlistProvider>
+                <UserHistoryProvider>
+                    <MainLayout />
+                </UserHistoryProvider>
+            </WatchlistProvider>
+        </LanguageProvider>
+    );
+};
+
+export default App;

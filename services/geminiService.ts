@@ -14,7 +14,7 @@ if (!API_KEY) {
 } else {
     ai = new GoogleGenAI({ apiKey: API_KEY });
     chatModel = ai.chats.create({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       config: {
         systemInstruction: 'You are SeikoBot, a helpful assistant for the SeikoYT video platform. You know about movies, TV shows, and can help users navigate the platform. Your tone is friendly and cinematic.',
       },
@@ -103,7 +103,7 @@ export const searchWithGrounding = async (query: string): Promise<{ text: string
     }
     try {
         const response: GenerateContentResponse = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-3-flash-preview",
             contents: `Based on up-to-date information, answer the following question about movies, tv shows, actors, or directors: "${query}"`,
             config: {
                 tools: [{googleSearch: {}}],
@@ -128,7 +128,7 @@ export const getPersonalizedRecommendations = async (
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: `
         You are a content recommendation engine.
         User Profile:
