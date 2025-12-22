@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useRef, createContext, useContext, useMemo, useCallback } from 'react';
-import { Content, Episode, Season, DrmConfig } from './types';
+import { Content, Episode, Season, DrmConfig, UserProfile } from './types';
 import { MOCK_CONTENT, LANGUAGES, TRANSLATIONS } from './constants';
 import { getPersonalizedRecommendations } from './services/geminiService';
 
@@ -102,6 +101,86 @@ const AdUnit: React.FC<{ slot: string; format?: 'auto' | 'fluid' | 'rectangle'; 
     );
 };
 
+// --- PROFILE CONTEXT ---
+
+type ProfileContextType = {
+    currentProfile: UserProfile | null;
+    profiles: UserProfile[];
+    switchProfile: (profileId: string) => void;
+    addProfile: (name: string) => void;
+    deleteProfile: (id: string) => void;
+    logout: () => void;
+};
+
+const ProfileContext = createContext<ProfileContextType>({
+    currentProfile: null,
+    profiles: [],
+    switchProfile: () => {},
+    addProfile: () => {},
+    deleteProfile: () => {},
+    logout: () => {},
+});
+
+export const useProfile = () => useContext(ProfileContext);
+
+const DEFAULT_AVATARS = [
+    "https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png",
+    "https://mir-s3-cdn-cf.behance.net/project_modules/disp/84c20033850498.56ba69ac290ea.png",
+    "https://mir-s3-cdn-cf.behance.net/project_modules/disp/64623a33850498.56ba69ac2a6f7.png",
+    "https://mir-s3-cdn-cf.behance.net/project_modules/disp/1bdc9a33850498.56ba69ac2ba5b.png",
+    "https://mir-s3-cdn-cf.behance.net/project_modules/disp/f9eb71173566935.64936a77af35d.png"
+];
+
+export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const [profiles, setProfiles] = useState<UserProfile[]>(() => {
+        try {
+            const saved = localStorage.getItem('seikoyt_profiles');
+            return saved ? JSON.parse(saved) : [{ id: '1', name: 'User 1', avatar: DEFAULT_AVATARS[0] }];
+        } catch {
+            return [{ id: '1', name: 'User 1', avatar: DEFAULT_AVATARS[0] }];
+        }
+    });
+
+    const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
+
+    useEffect(() => {
+        localStorage.setItem('seikoyt_profiles', JSON.stringify(profiles));
+    }, [profiles]);
+
+    const currentProfile = useMemo(() => 
+        profiles.find(p => p.id === currentProfileId) || null
+    , [profiles, currentProfileId]);
+
+    const switchProfile = (id: string) => setCurrentProfileId(id);
+    
+    const logout = () => setCurrentProfileId(null);
+
+    const addProfile = (name: string) => {
+        const newProfile: UserProfile = {
+            id: Date.now().toString(),
+            name,
+            avatar: DEFAULT_AVATARS[profiles.length % DEFAULT_AVATARS.length]
+        };
+        setProfiles([...profiles, newProfile]);
+    };
+
+    const deleteProfile = (id: string) => {
+        setProfiles(profiles.filter(p => p.id !== id));
+        if (currentProfileId === id) setCurrentProfileId(null);
+    };
+
+    const value = useMemo(() => ({
+        currentProfile,
+        profiles,
+        switchProfile,
+        addProfile,
+        deleteProfile,
+        logout
+    }), [currentProfile, profiles, currentProfileId]);
+
+    return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
+};
+
 // --- LANGUAGE CONTEXT ---
 
 type LanguageContextType = {
@@ -151,18 +230,29 @@ const WatchlistContext = createContext<WatchlistContextType>({
 export const useWatchlist = () => useContext(WatchlistContext);
 
 export const WatchlistProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [watchlist, setWatchlist] = useState<string[]>(() => {
-        try {
-            const saved = localStorage.getItem('seikoyt_watchlist');
-            return saved ? JSON.parse(saved) : [];
-        } catch (e) {
-            return [];
-        }
-    });
+    const { currentProfile } = useProfile();
+    const [watchlist, setWatchlist] = useState<string[]>([]);
 
+    // Load watchlist for current profile
     useEffect(() => {
-        localStorage.setItem('seikoyt_watchlist', JSON.stringify(watchlist));
-    }, [watchlist]);
+        if (!currentProfile) {
+            setWatchlist([]);
+            return;
+        }
+        try {
+            const saved = localStorage.getItem(`seikoyt_watchlist_${currentProfile.id}`);
+            setWatchlist(saved ? JSON.parse(saved) : []);
+        } catch {
+            setWatchlist([]);
+        }
+    }, [currentProfile]);
+
+    // Save watchlist when it changes
+    useEffect(() => {
+        if (currentProfile) {
+            localStorage.setItem(`seikoyt_watchlist_${currentProfile.id}`, JSON.stringify(watchlist));
+        }
+    }, [watchlist, currentProfile]);
 
     const addToWatchlist = useCallback((id: string) => setWatchlist(prev => prev.includes(id) ? prev : [...prev, id]), []);
     const removeFromWatchlist = useCallback((id: string) => setWatchlist(prev => prev.filter(itemId => itemId !== id)), []);
@@ -215,46 +305,34 @@ const UserHistoryContext = createContext<UserHistoryContextType>({
 export const useUserHistory = () => useContext(UserHistoryContext);
 
 export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [history, setHistory] = useState<string[]>(() => {
-        try {
-            const saved = localStorage.getItem('seikoyt_watch_history');
-            return saved ? JSON.parse(saved) : [];
-        } catch (e) { return []; }
-    });
+    const { currentProfile } = useProfile();
+    
+    // State Initializers
+    const [history, setHistory] = useState<string[]>([]);
+    const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
+    const [searchHistory, setSearchHistory] = useState<string[]>([]);
+    const [likedContent, setLikedContent] = useState<string[]>([]);
+    const [dislikedContent, setDislikedContent] = useState<string[]>([]);
 
-    const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>(() => {
-        try {
-            const saved = localStorage.getItem('seikoyt_watch_progress');
-            return saved ? JSON.parse(saved) : {};
-        } catch (e) { return {}; }
-    });
+    // Load Data on Profile Change
+    useEffect(() => {
+        if (!currentProfile) return;
+        const pid = currentProfile.id;
 
-    const [searchHistory, setSearchHistory] = useState<string[]>(() => {
-        try {
-            const saved = localStorage.getItem('seikoyt_search_history');
-            return saved ? JSON.parse(saved) : [];
-        } catch (e) { return []; }
-    });
+        try { setHistory(JSON.parse(localStorage.getItem(`seikoyt_watch_history_${pid}`) || '[]')); } catch {}
+        try { setWatchProgress(JSON.parse(localStorage.getItem(`seikoyt_watch_progress_${pid}`) || '{}')); } catch {}
+        try { setSearchHistory(JSON.parse(localStorage.getItem(`seikoyt_search_history_${pid}`) || '[]')); } catch {}
+        try { setLikedContent(JSON.parse(localStorage.getItem(`seikoyt_liked_content_${pid}`) || '[]')); } catch {}
+        try { setDislikedContent(JSON.parse(localStorage.getItem(`seikoyt_disliked_content_${pid}`) || '[]')); } catch {}
 
-    const [likedContent, setLikedContent] = useState<string[]>(() => {
-        try {
-            const saved = localStorage.getItem('seikoyt_liked_content');
-            return saved ? JSON.parse(saved) : [];
-        } catch (e) { return []; }
-    });
+    }, [currentProfile]);
 
-    const [dislikedContent, setDislikedContent] = useState<string[]>(() => {
-        try {
-            const saved = localStorage.getItem('seikoyt_disliked_content');
-            return saved ? JSON.parse(saved) : [];
-        } catch (e) { return []; }
-    });
-
-    useEffect(() => { localStorage.setItem('seikoyt_watch_history', JSON.stringify(history)); }, [history]);
-    useEffect(() => { localStorage.setItem('seikoyt_watch_progress', JSON.stringify(watchProgress)); }, [watchProgress]);
-    useEffect(() => { localStorage.setItem('seikoyt_search_history', JSON.stringify(searchHistory)); }, [searchHistory]);
-    useEffect(() => { localStorage.setItem('seikoyt_liked_content', JSON.stringify(likedContent)); }, [likedContent]);
-    useEffect(() => { localStorage.setItem('seikoyt_disliked_content', JSON.stringify(dislikedContent)); }, [dislikedContent]);
+    // Save Data Effects
+    useEffect(() => { if (currentProfile) localStorage.setItem(`seikoyt_watch_history_${currentProfile.id}`, JSON.stringify(history)); }, [history, currentProfile]);
+    useEffect(() => { if (currentProfile) localStorage.setItem(`seikoyt_watch_progress_${currentProfile.id}`, JSON.stringify(watchProgress)); }, [watchProgress, currentProfile]);
+    useEffect(() => { if (currentProfile) localStorage.setItem(`seikoyt_search_history_${currentProfile.id}`, JSON.stringify(searchHistory)); }, [searchHistory, currentProfile]);
+    useEffect(() => { if (currentProfile) localStorage.setItem(`seikoyt_liked_content_${currentProfile.id}`, JSON.stringify(likedContent)); }, [likedContent, currentProfile]);
+    useEffect(() => { if (currentProfile) localStorage.setItem(`seikoyt_disliked_content_${currentProfile.id}`, JSON.stringify(dislikedContent)); }, [dislikedContent, currentProfile]);
 
     const addToHistory = useCallback((id: string) => {
         setHistory(prev => [...prev.filter(itemId => itemId !== id), id]);
@@ -297,8 +375,8 @@ export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ c
         history, 
         watchProgress, 
         searchHistory, 
-        likedContent,
-        dislikedContent,
+        likedContent, 
+        dislikedContent, 
         addToHistory, 
         updateProgress, 
         addSearchToHistory, 
@@ -313,6 +391,7 @@ export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ c
 };
 
 // --- ICONS ---
+// (Icons kept as is, but memoized to prevent re-renders)
 const PlayIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
   <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
 ));
@@ -395,12 +474,18 @@ const WifiIcon: React.FC<{ className?: string }> = React.memo(({ className }) =>
 const HeadphonesIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 3a9 9 0 0 0-9 9v7c0 1.1.9 2 2 2h4v-8H5v-1c0-3.87 3.13-7 7-7s7 3.13 7 7v1h-4v8h4c1.1 0 2-.9 2-2v-7a9 9 0 0 0-9-9z"/></svg>
 ));
+const PlusIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"></path></svg>
+));
+const ProfileIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"></path></svg>
+));
 
 const YouTubeIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
 ));
 const InstagramIcon: React.FC<{ className?: string }> = React.memo(({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.332 3.608 1.308.975.975 1.245 2.242 1.308 3.608.058 1.266.07 1.646.07 4.85s-.012 3.584-.07 4.85c-.062 1.366-.332 2.633-1.308 3.608-.975-.975-1.245-2.242-1.308-3.608-.058-1.266-.07-1.646-.07-4.85s.012-3.584.07-4.85c.062-1.366.332-2.633 1.308-3.608.975-.975 2.242-1.245 3.608-1.308 1.266-.058 1.646-.07 4.85-.07zm0-2.163c-3.259 0-3.667.014-4.947.072-1.303.06-2.192.267-2.97.568-.804.312-1.486.732-2.165 1.411-.679.679-1.099 1.361-1.411 2.165-.301.778-.508 1.667-.568 2.97-.058 1.28-.072 1.688-.072 4.947-.072s3.667-.014 4.947-.072c1.303-.06 2.192-.267 2.97-.568.804-.312 1.486-.732 2.165-1.411.679-.679 1.099-1.361 1.411-2.165.301-.778.508-1.667.508-2.97-.568-1.28-.058-1.688-.072-4.947-.072zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.162 6.162 6.162 6.162-2.759 6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162zM12 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.441s.645 1.441 1.441 1.441 1.441-.645 1.441-1.441-.645-1.441-1.441-1.441z"/></svg>
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.332 3.608 1.308.975.975 1.245 2.242 1.308 3.608.058 1.266.07 1.646.07 4.85s-.012 3.584-.07 4.85c-.062 1.366-.332 2.633-1.308 3.608-.975-.975-1.245-2.242-1.308-3.608-.058-1.266-.07-1.646-.07-4.85s.012-3.584.07-4.85c.062-1.366.332-2.633 1.308-3.608.975-.975 2.242-1.245 3.608-1.308 1.266-.058 1.646-.07 4.85-.07zm0-2.163c-3.259 0-3.667.014-4.947.072-1.303.06-2.192.267-2.97.568-.804.312-1.486.732-2.165 1.411-.679.679-1.099 1.361-1.411 2.165-.301.778-.508 1.667-.568 2.97-.058 1.28-.072 1.688-.072 4.947-.072s3.667-.014 4.947-.072c1.303-.06 2.192-.267 2.97-.568.804-.312 1.486-.732 2.165-1.411.679-.679 1.099-1.361 1.411-2.165.301-.778.508-1.667.508-2.97-.568-1.28-.058-1.688-.072-4.947-.072zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.162 6.162 6.162 6.162-2.759 6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162-2.759-6.162-6.162zM12 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.441s.645 1.441 1.441 1.441 1.441-.645 1.441-1.441-.645-1.441-1.441-.645-1.441-1.441z"/></svg>
 ));
 
 // --- CHRISTMAS COMPONENTS ---
@@ -458,17 +543,99 @@ const LoadingOverlay: React.FC = () => (
     </div>
 );
 
+const ProfileSelector: React.FC = () => {
+    const { profiles, switchProfile, addProfile, deleteProfile } = useProfile();
+    const [isAdding, setIsAdding] = useState(false);
+    const [newProfileName, setNewProfileName] = useState('');
+    const [isEditing, setIsEditing] = useState(false);
+
+    const handleAdd = () => {
+        if (newProfileName.trim()) {
+            addProfile(newProfileName.trim());
+            setNewProfileName('');
+            setIsAdding(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-[#141414] z-[100] flex flex-col items-center justify-center animate-fade-in">
+            <h1 className="text-4xl md:text-5xl font-bebas text-white mb-12 tracking-wide">Who's Watching?</h1>
+            
+            <div className="flex flex-wrap justify-center gap-8 mb-12">
+                {profiles.map(profile => (
+                    <div key={profile.id} className="group flex flex-col items-center w-32 space-y-4 cursor-pointer relative">
+                        <div 
+                            className="w-32 h-32 rounded bg-gray-800 overflow-hidden border-2 border-transparent group-hover:border-white transition-all relative"
+                            onClick={() => !isEditing && switchProfile(profile.id)}
+                        >
+                            <img src={profile.avatar} alt={profile.name} className="w-full h-full object-cover" />
+                            {isEditing && (
+                                <div className="absolute inset-0 bg-black/60 flex items-center justify-center" onClick={(e) => { e.stopPropagation(); deleteProfile(profile.id); }}>
+                                    <TrashIcon className="w-8 h-8 text-red-500 hover:scale-110 transition-transform" />
+                                </div>
+                            )}
+                        </div>
+                        <span className="text-gray-400 group-hover:text-white text-lg transition-colors">{profile.name}</span>
+                    </div>
+                ))}
+
+                {/* Add Profile Button */}
+                {!isAdding && profiles.length < 5 && (
+                    <div className="group flex flex-col items-center w-32 space-y-4 cursor-pointer" onClick={() => setIsAdding(true)}>
+                        <div className="w-32 h-32 rounded-full flex items-center justify-center bg-transparent group-hover:bg-white transition-all border-2 border-gray-500 group-hover:border-white">
+                            <PlusIcon className="w-16 h-16 text-gray-500 group-hover:text-black transition-colors" />
+                        </div>
+                        <span className="text-gray-400 group-hover:text-white text-lg transition-colors">Add Profile</span>
+                    </div>
+                )}
+            </div>
+
+            {isAdding && (
+                <div className="flex flex-col items-center space-y-4 animate-fade-in">
+                    <input 
+                        type="text" 
+                        placeholder="Name" 
+                        value={newProfileName}
+                        onChange={(e) => setNewProfileName(e.target.value)}
+                        className="bg-[#333] border border-gray-600 px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:border-white w-64"
+                        autoFocus
+                    />
+                    <div className="flex space-x-4">
+                        <button onClick={handleAdd} className="bg-white text-black px-6 py-2 font-bold hover:bg-red-600 hover:text-white transition-colors">Save</button>
+                        <button onClick={() => setIsAdding(false)} className="border border-gray-500 text-gray-500 px-6 py-2 font-bold hover:border-white hover:text-white transition-colors">Cancel</button>
+                    </div>
+                </div>
+            )}
+
+            <button 
+                onClick={() => setIsEditing(!isEditing)}
+                className="mt-8 border border-gray-500 text-gray-500 px-8 py-2 font-bold hover:border-white hover:text-white transition-colors uppercase tracking-widest text-sm"
+            >
+                {isEditing ? 'Done' : 'Manage Profiles'}
+            </button>
+        </div>
+    );
+};
+
 // FIX: Add missing LanguageSelector component.
 const LanguageSelector: React.FC = () => {
     const { currentLanguage, setLanguage } = useLanguage();
+    const { currentProfile, logout } = useProfile();
+
     return (
         <div className="relative group">
-            <button className="flex items-center space-x-1 text-gray-300 hover:text-white transition-colors">
-                <GlobeIcon className="w-5 h-5" />
-                <span className="text-xs uppercase font-bold hidden md:inline">{currentLanguage}</span>
+            <button className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors">
+                {currentProfile ? (
+                    <img src={currentProfile.avatar} alt="Profile" className="w-8 h-8 rounded" />
+                ) : (
+                    <GlobeIcon className="w-5 h-5" />
+                )}
             </button>
             <div className="absolute right-0 mt-2 w-48 bg-[#181818] border border-gray-800 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 py-2">
-                {LANGUAGES.map((lang) => (
+                <div className="px-4 py-2 border-b border-gray-700 mb-2">
+                    <p className="text-xs text-gray-500 font-bold uppercase">Language</p>
+                </div>
+                {LANGUAGES.slice(0, 5).map((lang) => ( // Show top 5 to keep menu short
                     <button
                         key={lang.code}
                         onClick={() => setLanguage(lang.code)}
@@ -477,6 +644,12 @@ const LanguageSelector: React.FC = () => {
                         {lang.name}
                     </button>
                 ))}
+                
+                <div className="border-t border-gray-700 mt-2 pt-2">
+                    <button onClick={logout} className="w-full text-left px-4 py-2 text-sm text-white hover:bg-red-600 transition-colors">
+                        Exit Profile
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -520,19 +693,94 @@ const ChangelogModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     );
 };
 
-// --- NEW ABOUT SECTION FOR ADSENSE COMPLIANCE ---
-const AboutSection: React.FC = () => {
+// --- LEGAL & INFO COMPONENTS FOR ADSENSE COMPLIANCE ---
+
+const LegalModal: React.FC<{ type: 'privacy' | 'terms'; onClose: () => void }> = ({ type, onClose }) => {
+    const { t } = useLanguage();
+    const isPrivacy = type === 'privacy';
+    
+    return (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+            <div className="bg-[#181818] text-white rounded-xl overflow-hidden w-full max-w-2xl flex flex-col animate-scale-in border border-gray-800 max-h-[80vh]" onClick={e => e.stopPropagation()}>
+                <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-black/20">
+                    <h3 className="text-xl font-bold">{isPrivacy ? t('privacyPolicy') : t('termsOfService')}</h3>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white"><CloseIcon className="w-6 h-6" /></button>
+                </div>
+                <div className="p-8 overflow-y-auto text-sm text-gray-300 leading-relaxed space-y-4">
+                    {isPrivacy ? (
+                        <>
+                            <p><strong>Last Updated: January 2025</strong></p>
+                            <p>At SeikoYT, accessible from seikoyt.com, one of our main priorities is the privacy of our visitors. This Privacy Policy document contains types of information that is collected and recorded by SeikoYT and how we use it.</p>
+                            <h4 className="text-white font-bold mt-4">Log Files</h4>
+                            <p>SeikoYT follows a standard procedure of using log files. These files log visitors when they visit websites. All hosting companies do this and a part of hosting services' analytics. The information collected by log files include internet protocol (IP) addresses, browser type, Internet Service Provider (ISP), date and time stamp, referring/exit pages, and possibly the number of clicks.</p>
+                            <h4 className="text-white font-bold mt-4">Cookies and Web Beacons</h4>
+                            <p>Like any other website, SeikoYT uses 'cookies'. These cookies are used to store information including visitors' preferences, and the pages on the website that the visitor accessed or visited. The information is used to optimize the users' experience by customizing our web page content based on visitors' browser type and/or other information.</p>
+                            <h4 className="text-white font-bold mt-4">Google DoubleClick DART Cookie</h4>
+                            <p>Google is one of a third-party vendor on our site. It also uses cookies, known as DART cookies, to serve ads to our site visitors based upon their visit to www.website.com and other sites on the internet.</p>
+                        </>
+                    ) : (
+                        <>
+                            <p><strong>Welcome to SeikoYT!</strong></p>
+                            <p>These terms and conditions outline the rules and regulations for the use of SeikoYT's Website.</p>
+                            <h4 className="text-white font-bold mt-4">Cookies</h4>
+                            <p>We employ the use of cookies. By accessing SeikoYT, you agreed to use cookies in agreement with the SeikoYT's Privacy Policy.</p>
+                            <h4 className="text-white font-bold mt-4">License</h4>
+                            <p>Unless otherwise stated, SeikoYT and/or its licensors own the intellectual property rights for all material on SeikoYT. All intellectual property rights are reserved. You may access this from SeikoYT for your own personal use subjected to restrictions set in these terms and conditions.</p>
+                            <h4 className="text-white font-bold mt-4">User Comments</h4>
+                            <p>This Agreement shall begin on the date hereof. Parts of this website offer an opportunity for users to post and exchange opinions and information in certain areas of the website. SeikoYT does not filter, edit, publish or review Comments prior to their presence on the website.</p>
+                        </>
+                    )}
+                </div>
+                <div className="p-4 border-t border-gray-800 bg-black/20 text-right">
+                    <button onClick={onClose} className="bg-red-600 text-white px-6 py-2 rounded font-bold hover:bg-red-700 transition-colors uppercase text-xs tracking-wider">{t('close')}</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const SeikoInfo: React.FC = () => (
+  <div className="container mx-auto px-4 py-12 text-gray-400 text-sm border-t border-gray-800/30">
+    <div className="max-w-4xl mx-auto text-center space-y-6">
+        <h2 className="text-2xl text-white font-bold mb-2 font-bebas tracking-wide">Watch Free Movies & TV Shows</h2>
+        <p className="leading-relaxed">
+          SeikoYT offers a vast library of free movies and TV series across various genres including Action, Drama, Sci-Fi, and more. 
+          Experience high-quality streaming without a subscription. Our platform is supported by ads to keep it free for everyone.
+          Whether you are looking for the latest blockbusters, timeless classics, or hidden gems, SeikoYT has something for every taste.
+        </p>
+        <p className="leading-relaxed">
+          Discover original series, blockbuster hits, and indie gems. Create your watchlist, share with friends, and join our community events.
+          We are dedicated to providing a seamless viewing experience with features like personalized recommendations, multi-language support, and interactive community tools.
+        </p>
+    </div>
+  </div>
+);
+
+const Footer: React.FC<{ onOpenPrivacy: () => void; onOpenTerms: () => void }> = ({ onOpenPrivacy, onOpenTerms }) => {
     const { t } = useLanguage();
     return (
-        <section className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 text-gray-400 text-sm leading-relaxed border-t border-gray-800/30 mt-12">
-            <h3 className="text-white font-bold text-lg mb-4">{t('aboutUs')}</h3>
-            <p className="mb-4">
-                {t('aboutText1')}
-            </p>
-            <p>
-                {t('aboutText2')}
-            </p>
-        </section>
+        <footer className="bg-black py-12 border-t border-gray-900 mt-12">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="flex flex-col md:flex-row justify-between items-center mb-8">
+                    <div className="flex items-center gap-4 mb-4 md:mb-0">
+                        <div className="relative">
+                            <SantaHatIcon className="absolute -top-3 -left-3 w-6 h-6 transform -rotate-12" />
+                            <span className="text-2xl font-bebas text-red-500 tracking-wider">SEIKOYT</span>
+                        </div>
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-400">
+                        <button onClick={onOpenPrivacy} className="hover:text-white transition-colors">{t('privacyPolicy')}</button>
+                        <button onClick={onOpenTerms} className="hover:text-white transition-colors">{t('termsOfService')}</button>
+                        <a href="#" className="hover:text-white transition-colors">Cookie Preferences</a>
+                        <a href="#" className="hover:text-white transition-colors">Help Center</a>
+                    </div>
+                </div>
+                <div className="text-center text-xs text-gray-600 space-y-2">
+                    <p>{t('copyright')}</p>
+                    <p>SeikoYT is a proof-of-concept streaming platform.</p>
+                </div>
+            </div>
+        </footer>
     );
 };
 
@@ -671,7 +919,19 @@ const VideoPlayer: React.FC<{
     const [currentQuality, setCurrentQuality] = useState('auto');
     const [currentAudio, setCurrentAudio] = useState('original');
     const [currentSubtitle, setCurrentSubtitle] = useState('off');
-    const [playerTheme, setPlayerTheme] = useState<'dark' | 'light'>('dark');
+    
+    // Theme State with Persistence
+    const [playerTheme, setPlayerTheme] = useState<'dark' | 'light'>(() => {
+        try {
+            return (localStorage.getItem('seikoyt_player_theme') as 'dark' | 'light') || 'dark';
+        } catch {
+            return 'dark';
+        }
+    });
+
+    useEffect(() => {
+        localStorage.setItem('seikoyt_player_theme', playerTheme);
+    }, [playerTheme]);
     
     // New Features: Data Saver & Spatial Audio
     const [dataSaver, setDataSaver] = useState(false);
@@ -679,6 +939,12 @@ const VideoPlayer: React.FC<{
 
     const { updateProgress, watchProgress } = useUserHistory();
     const { t } = useLanguage();
+
+    // Fix for Dependency Cycle: Use Ref for watchProgress
+    const watchProgressRef = useRef(watchProgress);
+    useEffect(() => {
+        watchProgressRef.current = watchProgress;
+    }, [watchProgress]);
 
     // Theme Helpers
     const isDark = playerTheme === 'dark';
@@ -689,6 +955,16 @@ const VideoPlayer: React.FC<{
     const activeItem = 'text-red-500 font-bold';
     const buttonText = isDark ? 'text-white' : 'text-black';
     const cancelBtn = isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-800';
+    
+    // Player UI Theme Variables
+    const controlsText = isDark ? 'text-white' : 'text-gray-900';
+    const controlsBg = isDark ? 'from-black via-black/80' : 'from-white/90 via-white/80';
+    const progressBarBg = isDark ? 'bg-gray-600' : 'bg-gray-300';
+    const lightModeStyles = !isDark ? `
+        input[type=range].video-progress::-webkit-slider-runnable-track {
+            background: rgba(0, 0, 0, 0.1) !important;
+        }
+    ` : '';
 
     // Mock Detection for "Auto" Quality based on connection
     useEffect(() => {
@@ -895,7 +1171,15 @@ const VideoPlayer: React.FC<{
                         // The component state `isPlaying` defaults to true.
                         await video.play();
                     } catch (e) {
-                        console.error('Shaka load error', e);
+                        console.warn('Shaka Player load failed, falling back to native player:', e);
+                        // Fallback logic for simple MP4s that Shaka fails to load (e.g. CORS or format issues)
+                        await player.unload();
+                        video.src = src;
+                        try {
+                            await video.play();
+                        } catch (nativeError) {
+                             console.error("Native playback failed:", nativeError);
+                        }
                     }
                 } else {
                     console.error('Shaka Player not supported');
@@ -936,8 +1220,8 @@ const VideoPlayer: React.FC<{
 
         const handleLoaded = () => {
              setDuration(video.duration);
-             // Restore watch progress here (safer than useEffect)
-             const savedProgress = watchProgress[id];
+             // Restore watch progress here using ref to avoid dependency cycle
+             const savedProgress = watchProgressRef.current[id];
              if (savedProgress && savedProgress.currentTime > 0) {
                  video.currentTime = savedProgress.currentTime;
              }
@@ -971,7 +1255,7 @@ const VideoPlayer: React.FC<{
                 video.load();
             } 
         };
-    }, [id, updateProgress, introStart, introEnd, drm, src, watchProgress]); 
+    }, [id, updateProgress, introStart, introEnd, drm, src]); // Removed watchProgress to fix loop/error
 
     // Handle Volume
     useEffect(() => {
@@ -1061,6 +1345,7 @@ const VideoPlayer: React.FC<{
 
     return (
         <div ref={containerRef} className={`group ${isMiniMode ? "fixed bottom-6 right-6 w-96 aspect-video bg-black z-50 shadow-2xl rounded-lg overflow-hidden border border-gray-800" : "fixed inset-0 bg-black z-50 flex items-center justify-center animate-fade-in"}`}>
+            <style>{lightModeStyles}</style>
             {/* 
                IMPORTANT: For true DRM support, this standard HTML5 <video> tag 
                must be initialized by a specialized library like Shaka Player, Dash.js, or Video.js
@@ -1102,7 +1387,7 @@ const VideoPlayer: React.FC<{
             )}
 
             {/* Controls Overlay */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end">
+            <div className={`absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t ${controlsBg} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end`}>
                 
                 {/* Progress Bar */}
                 <input 
@@ -1120,7 +1405,7 @@ const VideoPlayer: React.FC<{
                             }
                         }
                     }} 
-                    className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer video-progress mb-4" 
+                    className={`w-full h-1 ${progressBarBg} rounded-lg appearance-none cursor-pointer video-progress mb-4`}
                 />
                 
                 <div className="flex justify-between items-center">
@@ -1129,25 +1414,25 @@ const VideoPlayer: React.FC<{
                     <div className="flex items-center space-x-4">
                         {/* Previous Episode Button */}
                         {hasPreviousEpisode && onPrevious && (
-                             <button onClick={(e) => { e.stopPropagation(); onPrevious(); }} className="text-white hover:text-red-500 transition-colors flex items-center space-x-1" title={t('previousEpisode')}>
+                             <button onClick={(e) => { e.stopPropagation(); onPrevious(); }} className={`${controlsText} hover:text-red-500 transition-colors flex items-center space-x-1`} title={t('previousEpisode')}>
                                 <SkipPreviousIcon className="w-8 h-8" />
                             </button>
                         )}
 
-                         <button onClick={togglePlay} className="text-white hover:text-red-500 transition-colors">
+                         <button onClick={togglePlay} className={`${controlsText} hover:text-red-500 transition-colors`}>
                             {isPlaying ? <PauseIcon className="w-8 h-8" /> : <PlayIcon className="w-8 h-8" />}
                         </button>
                         
                         {/* Next Episode Button */}
                         {hasNextEpisode && onNext && (
-                             <button onClick={(e) => { e.stopPropagation(); onNext(); }} className="text-white hover:text-red-500 transition-colors flex items-center space-x-1" title={t('nextEpisode')}>
+                             <button onClick={(e) => { e.stopPropagation(); onNext(); }} className={`${controlsText} hover:text-red-500 transition-colors flex items-center space-x-1`} title={t('nextEpisode')}>
                                 <SkipNextIcon className="w-8 h-8" />
                             </button>
                         )}
 
                         {/* Volume Control */}
                         <div className="flex items-center space-x-2 group/volume relative">
-                            <button onClick={toggleMute} className="text-white hover:text-red-500 transition-colors">
+                            <button onClick={toggleMute} className={`${controlsText} hover:text-red-500 transition-colors`}>
                                 {isMuted || volume === 0 ? <VolumeOffIcon className="w-6 h-6" /> : <VolumeUpIcon className="w-6 h-6" />}
                             </button>
                             <input 
@@ -1157,11 +1442,11 @@ const VideoPlayer: React.FC<{
                                 step="0.01" 
                                 value={isMuted ? 0 : volume} 
                                 onChange={handleVolumeChange} 
-                                className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer video-progress opacity-0 group-hover/volume:opacity-100 transition-opacity duration-200" 
+                                className={`w-20 h-1 ${progressBarBg} rounded-lg appearance-none cursor-pointer video-progress opacity-0 group-hover/volume:opacity-100 transition-opacity duration-200`} 
                             />
                         </div>
                         
-                        <div className="text-white text-sm font-mono tracking-wider">{formatTime(currentTime)} / {formatTime(duration)}</div>
+                        <div className={`${controlsText} text-sm font-mono tracking-wider`}>{formatTime(currentTime)} / {formatTime(duration)}</div>
                     </div>
 
                     {/* Right Controls */}
@@ -1171,13 +1456,13 @@ const VideoPlayer: React.FC<{
                         <div className="relative">
                             <button 
                                 onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); setActiveSettingsTab('main'); }} 
-                                className={`text-white hover:text-red-500 transition-colors p-1 ${showSettings ? 'rotate-90' : ''} transform duration-300`}
+                                className={`${controlsText} hover:text-red-500 transition-colors p-1 ${showSettings ? 'rotate-90' : ''} transform duration-300`}
                             >
                                 <SettingsIcon className="w-6 h-6" />
                             </button>
                             
                             {/* Auto Quality Badge (Visible) */}
-                            <span className="hidden md:inline-block text-[10px] font-bold text-gray-400 border border-gray-600 px-1.5 py-0.5 rounded ml-2 uppercase tracking-wide">
+                            <span className={`hidden md:inline-block text-[10px] font-bold ${textSecondary} border ${isDark ? 'border-gray-600' : 'border-gray-300'} px-1.5 py-0.5 rounded ml-2 uppercase tracking-wide`}>
                                 {getQualityLabel()}
                             </span>
 
@@ -1312,19 +1597,19 @@ const VideoPlayer: React.FC<{
                         </div>
 
                         {/* Native PiP */}
-                        <button onClick={togglePiP} className="text-white hover:text-red-500 transition-colors p-1" title="Picture-in-Picture">
+                        <button onClick={togglePiP} className={`${controlsText} hover:text-red-500 transition-colors p-1`} title="Picture-in-Picture">
                             <PipIcon className="w-6 h-6" />
                         </button>
 
                         {/* Custom Mini Mode */}
                         {!isMiniMode && (
-                            <button onClick={toggleMiniMode} className="text-white hover:text-red-500 transition-colors p-1" title="Mini Player">
+                            <button onClick={toggleMiniMode} className={`${controlsText} hover:text-red-500 transition-colors p-1`} title="Mini Player">
                                 <MinimizeIcon className="w-6 h-6" />
                             </button>
                         )}
 
                         {/* Fullscreen */}
-                        <button onClick={toggleFullscreen} className="text-white hover:text-red-500 transition-colors p-1" title="Fullscreen">
+                        <button onClick={toggleFullscreen} className={`${controlsText} hover:text-red-500 transition-colors p-1`} title="Fullscreen">
                             {isFullscreen ? <MinimizeIcon className="w-6 h-6" /> : <FullscreenIcon className="w-6 h-6" />}
                         </button>
                     </div>
@@ -1334,49 +1619,86 @@ const VideoPlayer: React.FC<{
     );
 };
 
-// --- PAGE VIEWS ---
+const ContentCard: React.FC<{ item: Content; onPlay: () => void; progress?: { currentTime: number; duration: number } }> = ({ item, onPlay, progress }) => {
+    const { addToWatchlist, removeFromWatchlist, isInWatchlist } = useWatchlist();
+    const { toggleLike, isLiked, toggleDislike, isDisliked } = useUserHistory();
+    const inList = isInWatchlist(item.id);
+    const liked = isLiked(item.id);
+    const disliked = isDisliked(item.id);
 
-const WatchlistView: React.FC<{ onSelect: (c: Content) => void }> = ({ onSelect }) => {
-    const { watchlist } = useWatchlist();
-    const { t } = useLanguage();
-    const items = MOCK_CONTENT.filter(c => watchlist.includes(c.id));
-
-    if (items.length === 0) {
-        return (
-            <div className="pt-32 px-12 text-center min-h-[50vh]">
-                <h2 className="text-2xl font-bold mb-4">{t('myList')}</h2>
-                <p className="text-gray-400 mb-8">{t('emptyWatchlist')}</p>
-                <div className="bg-gray-900/50 p-8 rounded-xl max-w-2xl mx-auto border border-gray-800 text-left">
-                    <h3 className="text-xl font-bold mb-4 text-white">How to build your collection:</h3>
-                    <ul className="space-y-4 text-gray-300 text-sm">
-                        <li className="flex items-start">
-                            <span className="text-red-500 mr-2 font-bold">1.</span>
-                            Browse our extensive library of Movies and TV Shows.
-                        </li>
-                        <li className="flex items-start">
-                            <span className="text-red-500 mr-2 font-bold">2.</span>
-                            Click on any title to view details.
-                        </li>
-                        <li className="flex items-start">
-                            <span className="text-red-500 mr-2 font-bold">3.</span>
-                            Look for the "Add to List" button to save it for later.
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        );
-    }
+    const percent = progress ? (progress.currentTime / progress.duration) * 100 : 0;
 
     return (
-        <div className="pt-24 px-4 sm:px-12 pb-12 min-h-screen">
-            <h2 className="text-3xl font-bebas text-white mb-6">{t('myList')}</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div className="group relative bg-[#181818] rounded-md overflow-hidden transition-all duration-300 hover:scale-105 hover:z-20 hover:shadow-2xl border border-transparent hover:border-gray-700">
+            <div className="aspect-[16/9] relative cursor-pointer" onClick={onPlay}>
+                <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" loading="lazy" />
+                {progress && percent < 95 && (
+                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-700">
+                        <div className="h-full bg-red-600" style={{ width: `${percent}%` }}></div>
+                    </div>
+                )}
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <PlayIcon className="w-12 h-12 text-white drop-shadow-lg" />
+                </div>
+            </div>
+            
+            <div className="p-3 absolute inset-x-0 bottom-0 bg-[#181818] translate-y-full group-hover:translate-y-0 transition-transform duration-300 shadow-xl z-30">
+                 <div className="flex justify-between items-start mb-2">
+                     <div className="flex space-x-2">
+                         <button onClick={(e) => { e.stopPropagation(); onPlay(); }} className="bg-white text-black rounded-full p-1 hover:bg-gray-200"><PlayIcon className="w-4 h-4" /></button>
+                         <button onClick={(e) => { e.stopPropagation(); inList ? removeFromWatchlist(item.id) : addToWatchlist(item.id); }} className="border border-gray-500 rounded-full p-1 hover:border-white text-gray-300 hover:text-white">
+                             {inList ? <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> : <PlusIcon className="w-4 h-4" />}
+                         </button>
+                         <button onClick={(e) => { e.stopPropagation(); toggleLike(item.id); }} className={`border border-gray-500 rounded-full p-1 hover:border-white ${liked ? 'text-green-500 border-green-500' : 'text-gray-300 hover:text-white'}`}>
+                             <ThumbUpIcon className="w-4 h-4" filled={liked} />
+                         </button>
+                         <button onClick={(e) => { e.stopPropagation(); toggleDislike(item.id); }} className={`border border-gray-500 rounded-full p-1 hover:border-white ${disliked ? 'text-red-500 border-red-500' : 'text-gray-300 hover:text-white'}`}>
+                             <ThumbDownIcon className="w-4 h-4" filled={disliked} />
+                         </button>
+                     </div>
+                 </div>
+                 <h4 className="font-bold text-sm text-white mb-1 line-clamp-1">{item.title}</h4>
+                 <div className="flex items-center space-x-2 text-[10px] text-gray-400 font-bold">
+                     <span className="text-green-400">98% Match</span>
+                     <span className="border border-gray-600 px-1 rounded">{item.rating}</span>
+                     <span>{item.releaseYear}</span>
+                 </div>
+                 <div className="flex flex-wrap gap-1 mt-2">
+                     {item.genre.slice(0, 3).map(g => (
+                         <span key={g} className="text-[9px] text-gray-500">{g}</span>
+                     ))}
+                 </div>
+            </div>
+        </div>
+    );
+};
+
+const ContentRow: React.FC<{ title: string; items: Content[]; onPlay: (c: Content) => void; progressMap?: Record<string, { currentTime: number; duration: number }> }> = ({ title, items, onPlay, progressMap }) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    const scroll = (direction: 'left' | 'right') => {
+        if (scrollRef.current) {
+            const { current } = scrollRef;
+            const scrollAmount = direction === 'left' ? -current.offsetWidth / 2 : current.offsetWidth / 2;
+            current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+        }
+    };
+
+    if (items.length === 0) return null;
+
+    return (
+        <div className="space-y-2 group/row">
+             <div className="flex justify-between items-end px-1">
+                <h3 className="text-lg md:text-xl font-bold text-gray-200 group-hover/row:text-white transition-colors">{title}</h3>
+                <div className="hidden md:flex space-x-2 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                    <button onClick={() => scroll('left')} className="p-1 bg-black/50 hover:bg-red-600 rounded-full text-white transition-colors"><SkipPreviousIcon className="w-4 h-4" /></button>
+                    <button onClick={() => scroll('right')} className="p-1 bg-black/50 hover:bg-red-600 rounded-full text-white transition-colors"><SkipNextIcon className="w-4 h-4" /></button>
+                </div>
+            </div>
+            <div ref={scrollRef} className="flex space-x-4 overflow-x-auto pb-8 scrollbar-hide scroll-smooth px-1">
                 {items.map(item => (
-                    <div key={item.id} onClick={() => onSelect(item)} className="aspect-[2/3] bg-gray-800 rounded overflow-hidden cursor-pointer hover:scale-105 transition-transform relative group">
-                        <img src={item.thumbnailUrl} className="w-full h-full object-cover" alt={item.title} />
-                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                             <PlayIcon className="w-10 h-10 text-white" />
-                        </div>
+                    <div key={item.id} className="flex-none w-[160px] md:w-[220px]">
+                        <ContentCard item={item} onPlay={() => onPlay(item)} progress={progressMap?.[item.id]} />
                     </div>
                 ))}
             </div>
@@ -1384,408 +1706,286 @@ const WatchlistView: React.FC<{ onSelect: (c: Content) => void }> = ({ onSelect 
     );
 };
 
-const CallsView: React.FC = () => {
+const MainApp: React.FC = () => {
+    const { currentProfile } = useProfile();
     const { t } = useLanguage();
-    const containerRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (window.JitsiMeetExternalAPI && containerRef.current) {
-            const domain = 'meet.jit.si';
-            const options = {
-                roomName: 'SeikoYTCommunityRoom_Main',
-                width: '100%',
-                height: 600,
-                parentNode: containerRef.current,
-                theme: 'dark',
-                configOverwrite: { startWithAudioMuted: true },
-            };
-            const api = new window.JitsiMeetExternalAPI(domain, options);
-            return () => api.dispose();
-        }
-    }, []);
-
-    return (
-        <div className="pt-24 px-4 sm:px-12 pb-12 min-h-screen animate-fade-in">
-             <h2 className="text-3xl font-bebas text-white mb-6">{t('calls')}</h2>
-             
-             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
-                <div className="lg:col-span-2">
-                     <p className="text-gray-300 mb-6 text-lg">{t('callsDescription')}</p>
-                     <div ref={containerRef} className="w-full bg-gray-900 rounded-xl overflow-hidden shadow-2xl min-h-[500px] border border-gray-800 relative flex items-center justify-center">
-                        {!window.JitsiMeetExternalAPI && (
-                            <div className="text-center p-8">
-                                <PhoneIcon className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                                <h3 className="text-xl font-bold text-white mb-2">Join the Conversation</h3>
-                                <p className="text-gray-400">Loading secure video room...</p>
-                            </div>
-                        )}
-                     </div>
-                </div>
-                
-                <div className="bg-[#181818] p-6 rounded-xl border border-gray-800 h-fit">
-                    <h3 className="text-xl font-bold text-white mb-4 border-b border-gray-700 pb-2">Community Guidelines</h3>
-                    <ul className="space-y-4 text-sm text-gray-400">
-                        <li className="flex items-start">
-                            <span className="w-2 h-2 bg-red-500 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
-                            <span><strong>Respect Everyone:</strong> Treat all members with kindness and respect. Harassment is not tolerated.</span>
-                        </li>
-                        <li className="flex items-start">
-                            <span className="w-2 h-2 bg-red-500 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
-                            <span><strong>No Spoilers:</strong> Please use spoiler warnings when discussing recent episodes.</span>
-                        </li>
-                        <li className="flex items-start">
-                            <span className="w-2 h-2 bg-red-500 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
-                            <span><strong>Keep it Clean:</strong> Avoid inappropriate language or content in public rooms.</span>
-                        </li>
-                        <li className="flex items-start">
-                            <span className="w-2 h-2 bg-red-500 rounded-full mt-1.5 mr-2 flex-shrink-0"></span>
-                            <span><strong>Have Fun:</strong> Share your theories, fan art, and love for the shows!</span>
-                        </li>
-                    </ul>
-                    
-                    <div className="mt-8 pt-6 border-t border-gray-800">
-                        <h4 className="text-white font-bold mb-2">Live Schedule</h4>
-                        <div className="bg-white/5 p-3 rounded text-xs text-gray-400">
-                            <div className="flex justify-between mb-1"><span>Fridays</span> <span className="text-white">8:00 PM EST</span></div>
-                            <div>Weekly Fan Theory Discussion</div>
-                        </div>
-                    </div>
-                </div>
-             </div>
-        </div>
-    );
-}
-
-const MinigamesView: React.FC = () => {
-    const { t } = useLanguage();
-    return (
-        <div className="pt-24 px-4 sm:px-12 pb-12 min-h-screen text-center animate-fade-in">
-            <h2 className="text-3xl font-bebas text-white mb-6">{t('minigames')}</h2>
-            <p className="text-gray-400 max-w-2xl mx-auto mb-12">Take a break from watching and challenge yourself with our exclusive arcade collection. Compete for the high score!</p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-                {['Space Shooter', 'Dino Run', 'Memory Match'].map((game, i) => (
-                    <div key={i} className="bg-[#181818] rounded-xl overflow-hidden hover:bg-[#202020] transition-colors cursor-pointer group border border-gray-800 flex flex-col h-full">
-                        <div className="h-40 bg-gray-800 flex items-center justify-center relative overflow-hidden">
-                            <div className="absolute inset-0 bg-gradient-to-t from-[#181818] to-transparent opacity-50"></div>
-                            <GamepadIcon className="w-20 h-20 text-red-500 group-hover:scale-110 transition-transform relative z-10" />
-                        </div>
-                        <div className="p-6 flex-1 flex flex-col text-left">
-                            <h3 className="text-xl font-bold text-white mb-2">{game}</h3>
-                            <p className="text-gray-400 text-sm mb-4 flex-1">
-                                {i === 0 && "Defend the galaxy against alien invaders in this classic retro shooter."}
-                                {i === 1 && "Run as far as you can while dodging obstacles in this endless runner."}
-                                {i === 2 && "Test your brain power by matching characters from your favorite shows."}
-                            </p>
-                            <button className="w-full bg-white/10 hover:bg-red-600 text-white font-bold py-2 rounded transition-colors text-sm uppercase tracking-wide">
-                                {t('playGame')}
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            <div className="mt-16 bg-[#181818] p-8 rounded-xl max-w-4xl mx-auto border border-gray-800">
-                <h3 className="text-2xl font-bold text-white mb-6">Leaderboard</h3>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-gray-400">
-                        <thead className="text-xs uppercase bg-white/5 text-gray-200">
-                            <tr>
-                                <th className="px-6 py-3">Rank</th>
-                                <th className="px-6 py-3">Player</th>
-                                <th className="px-6 py-3">Game</th>
-                                <th className="px-6 py-3">Score</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr className="border-b border-gray-800 hover:bg-white/5">
-                                <td className="px-6 py-4 font-bold text-yellow-500">#1</td>
-                                <td className="px-6 py-4 text-white">SeikoFan99</td>
-                                <td className="px-6 py-4">Space Shooter</td>
-                                <td className="px-6 py-4">12,450</td>
-                            </tr>
-                            <tr className="border-b border-gray-800 hover:bg-white/5">
-                                <td className="px-6 py-4 font-bold text-gray-400">#2</td>
-                                <td className="px-6 py-4 text-white">MovieBuff22</td>
-                                <td className="px-6 py-4">Dino Run</td>
-                                <td className="px-6 py-4">8,920</td>
-                            </tr>
-                            <tr className="hover:bg-white/5">
-                                <td className="px-6 py-4 font-bold text-orange-700">#3</td>
-                                <td className="px-6 py-4 text-white">AnimeLoverX</td>
-                                <td className="px-6 py-4">Memory Match</td>
-                                <td className="px-6 py-4">5,300</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// --- APP COMPONENT ---
-
-const MainLayout: React.FC = () => {
+    const { watchlist } = useWatchlist();
+    const { history, watchProgress, searchHistory, likedContent, toggleLike, toggleDislike, isLiked, isDisliked } = useUserHistory();
+    
     const [currentPage, setCurrentPage] = useState<Page>('home');
-    const [searchQuery, setSearchQuery] = useState('');
     const [selectedContent, setSelectedContent] = useState<Content | null>(null);
-    const [isMiniMode, setIsMiniMode] = useState(false);
+    const [selectedEpisode, setSelectedEpisode] = useState<Episode | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [isMiniPlayer, setIsMiniPlayer] = useState(false);
     const [showChangelog, setShowChangelog] = useState(false);
-    
-    const { t } = useLanguage();
-    const { history, searchHistory } = useUserHistory();
+    const [showPrivacy, setShowPrivacy] = useState(false);
+    const [showTerms, setShowTerms] = useState(false);
     const [recommendations, setRecommendations] = useState<string[]>([]);
-    
-    // Fetch Recommendations
+    const [filteredContent, setFilteredContent] = useState<Content[]>(MOCK_CONTENT);
+
+    // Initial Recommendations
     useEffect(() => {
-        const fetchRecs = async () => {
-            if (history.length > 0) {
-                 const recIds = await getPersonalizedRecommendations(history, [], searchHistory, MOCK_CONTENT);
-                 setRecommendations(recIds);
-            }
-        };
-        fetchRecs();
-    }, [history, searchHistory]);
-
-    // Handle Content Selection (Play)
-    const handlePlay = (content: Content) => {
-        setSelectedContent(content);
-        setIsMiniMode(false);
-    };
-
-    // Filter Logic with Secret Codes (Feature 3)
-    const searchResults = useMemo(() => {
-        if (!searchQuery) return [];
-        const lower = searchQuery.toLowerCase().trim();
-
-        // Secret Codes Logic
-        const SECRET_CODES: Record<string, string[]> = {
-            '6721': ['Sci-Fi', 'Fantasy', 'Animation'], // Anime Sci-Fi Proxy
-            '3652': ['History', 'Drama', 'Documentary'], // Bio Docs Proxy
-            '8195': ['Horror', 'Thriller'] // B-Horror Proxy
-        };
-
-        if (SECRET_CODES[lower]) {
-            const genres = SECRET_CODES[lower];
-            // Filter content that matches any of the secret genres
-            return MOCK_CONTENT.filter(c => c.genre.some(g => genres.includes(g)));
+        if (currentProfile) {
+            const fetchRecommendations = async () => {
+                const watchedTitles = history.map(id => MOCK_CONTENT.find(c => c.id === id)?.title || '').filter(Boolean);
+                const likedTitles = likedContent.map(id => MOCK_CONTENT.find(c => c.id === id)?.title || '').filter(Boolean);
+                
+                // Only fetch if we have some data to personalize or at least every once in a while
+                // For now, always fetch if empty to show something 'smart'
+                if (recommendations.length === 0) {
+                     const recIds = await getPersonalizedRecommendations(
+                        watchedTitles, 
+                        likedTitles, 
+                        searchHistory, 
+                        MOCK_CONTENT.map(c => ({ id: c.id, title: c.title, description: c.description, genre: c.genre }))
+                    );
+                    setRecommendations(recIds);
+                }
+            };
+            fetchRecommendations();
         }
+    }, [currentProfile, history, likedContent, searchHistory]); // simplified deps
 
-        return MOCK_CONTENT.filter(c => c.title.toLowerCase().includes(lower) || c.description.toLowerCase().includes(lower));
-    }, [searchQuery]);
-
-    // Helper to check if current search is a secret code
-    const isSecretCodeActive = useMemo(() => {
-        return ['6721', '3652', '8195'].includes(searchQuery.trim());
-    }, [searchQuery]);
-
-    const getSecretTitle = () => {
-        if (searchQuery.trim() === '6721') return t('secretGenre1');
-        if (searchQuery.trim() === '3652') return t('secretGenre2');
-        if (searchQuery.trim() === '8195') return t('secretGenre3');
-        return '';
-    };
-
-    const featured = MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0];
-    const recContent = recommendations.map(id => MOCK_CONTENT.find(c => c.id === id)).filter(Boolean) as Content[];
-    // Fill if empty
-    const displayRecs = recContent.length > 0 ? recContent : MOCK_CONTENT.slice(0, 10);
-
-    const renderContent = () => {
-        if (searchQuery) {
-            return (
-                <div className="pt-24 px-4 sm:px-8 pb-12 min-h-screen animate-fade-in">
-                    <h2 className="text-2xl text-white mb-6 font-bold flex items-center gap-2">
-                        {isSecretCodeActive ? (
-                            <>
-                                <span className="text-yellow-400 animate-pulse">🔓 {t('secretUnlocked')}</span>
-                                <span className="text-gray-400 text-sm ml-2">({getSecretTitle()})</span>
-                            </>
-                        ) : (
-                            `${t('searchResults')} "${searchQuery}"`
-                        )}
-                    </h2>
-                    {searchResults.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {searchResults.map(item => (
-                                <div key={item.id} onClick={() => handlePlay(item)} className="cursor-pointer group relative aspect-[2/3] rounded-lg overflow-hidden bg-gray-800 transition-transform hover:scale-105">
-                                    <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                        <PlayIcon className="w-12 h-12 text-white" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-gray-400 text-center mt-12">{t('noMatches')} "{searchQuery}"</div>
-                    )}
-                </div>
+    // Search Logic
+    useEffect(() => {
+        if (searchQuery.trim() === '') {
+            setFilteredContent(MOCK_CONTENT);
+        } else {
+            const lowerQuery = searchQuery.toLowerCase();
+            const filtered = MOCK_CONTENT.filter(c => 
+                c.title.toLowerCase().includes(lowerQuery) || 
+                c.description.toLowerCase().includes(lowerQuery) ||
+                c.genre.some(g => g.toLowerCase().includes(lowerQuery))
             );
+            setFilteredContent(filtered);
+            if (currentPage !== 'search') setCurrentPage('search');
         }
+    }, [searchQuery]);
 
-        switch(currentPage) {
-            case 'home':
-                return (
-                    <div className="pb-20 animate-fade-in">
-                        {featured && (
-                            <div className="relative h-[85vh] w-full">
-                                <div className="absolute inset-0">
-                                    <img src={featured.backdropUrl} className="w-full h-full object-cover" alt="Hero" />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-transparent to-transparent" />
-                                    <div className="absolute inset-0 bg-gradient-to-r from-[#141414]/90 via-black/20 to-transparent" />
-                                </div>
-                                <div className="absolute bottom-0 left-0 p-8 sm:p-16 max-w-2xl space-y-5">
-                                    <div className="flex items-center space-x-2 mb-2">
-                                         <span className="text-red-600 font-black tracking-widest uppercase text-xs">Featured</span>
-                                    </div>
-                                    <h1 className="text-5xl sm:text-7xl font-black text-white font-bebas drop-shadow-xl leading-none">{featured.title}</h1>
-                                    
-                                    <div className="flex items-center space-x-4 text-sm font-bold text-gray-300">
-                                        <span className="text-green-400">98% Match</span>
-                                        <span>{featured.releaseYear}</span>
-                                        <span className="border border-gray-500 px-1.5 py-0.5 rounded text-xs">{featured.rating}</span>
-                                        <span className="bg-red-600 text-white px-1.5 py-0.5 rounded text-xs">HD</span>
-                                    </div>
+    // Handle play content
+    const handlePlay = (content: Content, episode?: Episode) => {
+        setSelectedContent(content);
+        if (content.type === 'series') {
+            setSelectedEpisode(episode || getFirstEpisode(content));
+        } else {
+            setSelectedEpisode(null);
+        }
+        setIsMiniPlayer(false);
+    };
 
-                                    <p className="text-gray-200 text-lg line-clamp-3 drop-shadow-md leading-relaxed">{featured.description}</p>
-                                    
-                                    <div className="flex space-x-4 pt-4">
-                                        <button onClick={() => handlePlay(featured)} className="bg-white text-black px-8 py-3.5 rounded-lg font-bold flex items-center space-x-2 hover:bg-gray-200 transition-colors transform hover:scale-105 duration-200">
-                                            <PlayIcon className="w-6 h-6" />
-                                            <span>{t('play')}</span>
-                                        </button>
-                                        <button className="bg-gray-600/60 backdrop-blur-md text-white px-8 py-3.5 rounded-lg font-bold flex items-center space-x-2 hover:bg-gray-600/80 transition-colors">
-                                            <InfoIcon className="w-6 h-6" />
-                                            <span>{t('moreInfo')}</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        <div className="px-4 sm:px-12 -mt-32 relative z-10 space-y-12">
-                             {/* Recommended Row */}
-                             <section>
-                                <h3 className="text-white font-bold text-xl mb-4 flex items-center space-x-2">
-                                    <span>{t('recommendedForYou')}</span>
-                                    <SparklesIcon className="w-4 h-4 text-yellow-500" />
-                                </h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                                    {displayRecs.map(item => (
-                                        <div key={item.id} onClick={() => handlePlay(item)} className="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300 group relative shadow-lg">
-                                            <img src={item.thumbnailUrl} className="w-full h-full object-cover" loading="lazy" alt={item.title} />
-                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
-                                                <div className="flex justify-center mb-4">
-                                                    <div className="bg-red-600 rounded-full p-2 hover:scale-110 transition-transform">
-                                                        <PlayIcon className="w-6 h-6 text-white" />
-                                                    </div>
-                                                </div>
-                                                <h4 className="text-white text-xs font-bold truncate">{item.title}</h4>
-                                                <div className="flex justify-between items-center text-[10px] text-gray-300 mt-1">
-                                                    <span>{item.releaseYear}</span>
-                                                    <span className="border border-gray-500 px-1 rounded">{item.rating}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                             </section>
+    const handleClosePlayer = () => {
+        setSelectedContent(null);
+        setSelectedEpisode(null);
+        setIsMiniPlayer(false);
+    };
 
-                             <AdUnit slot="home_middle" />
-
-                             {/* Trending Row (Mock) */}
-                             <section>
-                                <h3 className="text-white font-bold text-xl mb-4">Trending Now</h3>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                                    {MOCK_CONTENT.slice(5, 17).map(item => (
-                                        <div key={item.id} onClick={() => handlePlay(item)} className="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-300 group relative shadow-lg">
-                                            <img src={item.thumbnailUrl} className="w-full h-full object-cover" loading="lazy" alt={item.title} />
-                                            <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow">TOP 10</div>
-                                        </div>
-                                    ))}
-                                </div>
-                             </section>
-                        </div>
-                        <AboutSection />
-                        <div className="text-center text-gray-600 text-xs py-8 border-t border-gray-900/50 mt-12 bg-black">
-                             {t('copyright')}
-                        </div>
-                    </div>
-                );
-            case 'movies':
-                 return (
-                    <div className="pt-24 px-4 sm:px-12 pb-12 min-h-screen animate-fade-in">
-                        <div className="flex justify-between items-end mb-6">
-                            <h2 className="text-3xl text-white font-bebas">{t('allMovies')}</h2>
-                            <div className="text-sm text-gray-400">Showing {MOCK_CONTENT.filter(c => c.type === 'movie').length} Titles</div>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                            {MOCK_CONTENT.filter(c => c.type === 'movie').map(item => (
-                                <div key={item.id} onClick={() => handlePlay(item)} className="aspect-[2/3] bg-gray-800 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform group relative">
-                                    <img src={item.thumbnailUrl} className="w-full h-full object-cover" alt={item.title} />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                        <PlayIcon className="w-12 h-12 text-white opacity-80" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                 );
-            case 'watchlist':
-                 return <WatchlistView onSelect={handlePlay} />;
-            case 'calls':
-                 return <CallsView />;
-            case 'minigames':
-                 return <MinigamesView />;
-            default:
-                return null;
+    const handleNextEpisode = () => {
+        if (selectedContent && selectedContent.type === 'series' && selectedEpisode) {
+            const next = getNextEpisode(selectedContent, selectedEpisode.id);
+            if (next) setSelectedEpisode(next);
         }
     };
+    
+    const handlePreviousEpisode = () => {
+        if (selectedContent && selectedContent.type === 'series' && selectedEpisode) {
+            const prev = getPreviousEpisode(selectedContent, selectedEpisode.id);
+            if (prev) setSelectedEpisode(prev);
+        }
+    };
+
+    if (!currentProfile) {
+        return <ProfileSelector />;
+    }
+
+    const featuredContent = MOCK_CONTENT.find(c => c.featured) || MOCK_CONTENT[0];
+    const trendingContent = MOCK_CONTENT.slice(0, 5);
+    const recommendedItems = recommendations.map(id => MOCK_CONTENT.find(c => c.id === id)).filter(Boolean) as Content[];
+    const continueWatchingItems = history.map(id => MOCK_CONTENT.find(c => c.id === id)).filter(c => c && watchProgress[c.id]?.currentTime > 0) as Content[];
+
+    const videoSrc = selectedContent?.type === 'series' && selectedEpisode ? selectedEpisode.videoUrl : selectedContent?.videoUrl;
+    const videoTitle = selectedContent?.type === 'series' && selectedEpisode ? `${selectedContent.title}: ${selectedEpisode.title}` : selectedContent?.title;
+    const videoDesc = selectedContent?.type === 'series' && selectedEpisode ? selectedEpisode.description : selectedContent?.description;
+    
+    const hasNext = selectedContent?.type === 'series' && selectedEpisode ? !!getNextEpisode(selectedContent, selectedEpisode.id) : false;
+    const hasPrev = selectedContent?.type === 'series' && selectedEpisode ? !!getPreviousEpisode(selectedContent, selectedEpisode.id) : false;
 
     return (
-        <div className="bg-[#141414] min-h-screen text-white font-sans selection:bg-red-500 selection:text-white">
+        <div className="bg-[#141414] min-h-screen text-white font-sans selection:bg-red-500 selection:text-white pb-20">
             <Snowfall />
             <Header 
-                currentPage={currentPage} 
                 onNavigate={setCurrentPage} 
+                currentPage={currentPage} 
                 onSearch={setSearchQuery} 
-                searchQuery={searchQuery} 
+                searchQuery={searchQuery}
             />
-            
-            {renderContent()}
 
-            {selectedContent && (
+            <main className="pt-16 md:pt-20">
+                {currentPage === 'home' && (
+                    <>
+                        {/* Hero Section */}
+                        {!searchQuery && (
+                            <div className="relative h-[56.25vw] max-h-[85vh] w-full">
+                                <div className="absolute inset-0">
+                                    <img src={featuredContent.backdropUrl} alt={featuredContent.title} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-gradient-to-r from-[#141414] via-transparent to-transparent"></div>
+                                    <div className="absolute inset-0 bg-gradient-to-t from-[#141414] via-transparent to-transparent"></div>
+                                </div>
+                                <div className="absolute bottom-[20%] left-[4%] max-w-xl space-y-4 z-10 animate-fade-in-up">
+                                    <h2 className="text-5xl md:text-7xl font-bebas text-white drop-shadow-lg">{featuredContent.title}</h2>
+                                    <p className="text-gray-200 text-sm md:text-lg line-clamp-3 drop-shadow-md">{featuredContent.description}</p>
+                                    <div className="flex space-x-4 pt-4">
+                                        <button 
+                                            onClick={() => handlePlay(featuredContent)}
+                                            className="bg-white text-black px-6 py-2 md:px-8 md:py-3 rounded flex items-center font-bold hover:bg-gray-200 transition-colors"
+                                        >
+                                            <PlayIcon className="w-6 h-6 mr-2" /> {t('play')}
+                                        </button>
+                                        <button 
+                                            className="bg-gray-500/70 text-white px-6 py-2 md:px-8 md:py-3 rounded flex items-center font-bold hover:bg-gray-500/50 transition-colors backdrop-blur-sm"
+                                        >
+                                            <InfoIcon className="w-6 h-6 mr-2" /> {t('moreInfo')}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="px-4 md:px-12 space-y-12 -mt-10 relative z-20">
+                            {continueWatchingItems.length > 0 && (
+                                <ContentRow title={t('continueWatching')} items={continueWatchingItems} onPlay={handlePlay} progressMap={watchProgress} />
+                            )}
+                            
+                            {recommendedItems.length > 0 && (
+                                <ContentRow title={t('recommendedForYou')} items={recommendedItems} onPlay={handlePlay} />
+                            )}
+
+                             <ContentRow title="Trending Now" items={trendingContent} onPlay={handlePlay} />
+                             <AdUnit slot="1234567890" />
+                             <ContentRow title={t('allMovies')} items={MOCK_CONTENT} onPlay={handlePlay} />
+                        </div>
+                    </>
+                )}
+
+                {currentPage === 'movies' && (
+                    <div className="px-4 md:px-12 pt-8">
+                        <h2 className="text-2xl font-bold mb-6 font-bebas tracking-wide text-red-500">{t('movies')}</h2>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                            {MOCK_CONTENT.filter(c => c.type === 'movie').map(item => (
+                                <ContentCard key={item.id} item={item} onPlay={() => handlePlay(item)} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+                
+                {currentPage === 'search' && (
+                    <div className="px-4 md:px-12 pt-8">
+                        <h2 className="text-2xl font-bold mb-6 font-bebas tracking-wide text-red-500">
+                             {searchQuery ? `${t('resultsFor')} "${searchQuery}"` : t('searchPlaceholder')}
+                        </h2>
+                         {filteredContent.length > 0 ? (
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                {filteredContent.map(item => (
+                                    <ContentCard key={item.id} item={item} onPlay={() => handlePlay(item)} />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center text-gray-500 mt-20">
+                                <p>{t('noMatches')} "{searchQuery}"</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+                
+                {currentPage === 'watchlist' && (
+                     <div className="px-4 md:px-12 pt-8">
+                        <h2 className="text-2xl font-bold mb-6 font-bebas tracking-wide text-red-500">{t('myList')}</h2>
+                        {watchlist.length > 0 ? (
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                {watchlist.map(id => {
+                                    const item = MOCK_CONTENT.find(c => c.id === id);
+                                    return item ? <ContentCard key={id} item={item} onPlay={() => handlePlay(item)} /> : null;
+                                })}
+                            </div>
+                        ) : (
+                             <div className="text-center text-gray-500 mt-20">
+                                <p>{t('emptyWatchlist')}</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {currentPage === 'calls' && (
+                    <div className="px-4 md:px-12 pt-8 text-center">
+                         <h2 className="text-2xl font-bold mb-6 font-bebas tracking-wide text-red-500">{t('calls')}</h2>
+                         <p className="text-gray-400">{t('callsDescription')}</p>
+                         <div className="mt-8 p-8 border border-gray-800 rounded bg-gray-900">
+                             <p>{t('comingSoon')}</p>
+                         </div>
+                    </div>
+                )}
+                
+                {currentPage === 'minigames' && (
+                     <div className="px-4 md:px-12 pt-8 text-center">
+                         <h2 className="text-2xl font-bold mb-6 font-bebas tracking-wide text-red-500">{t('minigames')}</h2>
+                         <p className="text-gray-400">{t('minigamesDesc')}</p>
+                         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+                             {['Snake', 'Tetris', 'PacMan'].map(game => (
+                                 <div key={game} className="aspect-video bg-gray-800 rounded flex items-center justify-center border border-gray-700 hover:border-red-500 transition-colors cursor-pointer group">
+                                     <GamepadIcon className="w-12 h-12 text-gray-600 group-hover:text-white transition-colors" />
+                                     <span className="ml-2 font-bebas text-xl text-gray-400 group-hover:text-white transition-colors">{game}</span>
+                                 </div>
+                             ))}
+                         </div>
+                    </div>
+                )}
+            </main>
+
+            <SeikoInfo />
+            <Footer onOpenPrivacy={() => setShowPrivacy(true)} onOpenTerms={() => setShowTerms(true)} />
+            
+            {selectedContent && videoSrc && (
                 <VideoPlayer 
-                    id={selectedContent.id}
-                    src={selectedContent.videoUrl || ''}
-                    title={selectedContent.title}
-                    description={selectedContent.description}
-                    introStart={selectedContent.introStart}
-                    introEnd={selectedContent.introEnd}
-                    onClose={() => setSelectedContent(null)}
-                    isMiniMode={isMiniMode}
-                    toggleMiniMode={() => setIsMiniMode(!isMiniMode)}
-                    hasNextEpisode={false} // Would implement for series
-                    hasPreviousEpisode={false}
+                    id={selectedEpisode ? selectedEpisode.id : selectedContent.id}
+                    src={videoSrc}
+                    title={videoTitle || ''}
+                    description={videoDesc || ''}
+                    introStart={selectedEpisode ? selectedEpisode.introStart : selectedContent.introStart}
+                    introEnd={selectedEpisode ? selectedEpisode.introEnd : selectedContent.introEnd}
+                    onClose={handleClosePlayer}
+                    isMiniMode={isMiniPlayer}
+                    toggleMiniMode={() => setIsMiniPlayer(!isMiniPlayer)}
+                    onNext={hasNext ? handleNextEpisode : undefined}
+                    hasNextEpisode={hasNext}
+                    onPrevious={hasPrev ? handlePreviousEpisode : undefined}
+                    hasPreviousEpisode={hasPrev}
                     drm={selectedContent.drm}
                 />
             )}
-            
-            <button onClick={() => setShowChangelog(true)} className="fixed bottom-4 left-4 text-[10px] text-gray-600 hover:text-white transition-colors z-40 bg-black/20 px-2 py-1 rounded border border-gray-800">v2.4.1</button>
+
             {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
+            {showPrivacy && <LegalModal type="privacy" onClose={() => setShowPrivacy(false)} />}
+            {showTerms && <LegalModal type="terms" onClose={() => setShowTerms(false)} />}
+            
+             <div className="fixed bottom-4 left-4 z-30">
+                <button onClick={() => setShowChangelog(true)} className="text-xs text-gray-500 hover:text-white transition-colors bg-black/50 px-2 py-1 rounded border border-gray-800">
+                    v2.1.0
+                </button>
+            </div>
         </div>
     );
 };
 
 const App: React.FC = () => {
     return (
-        <LanguageProvider>
-            <WatchlistProvider>
-                <UserHistoryProvider>
-                    <MainLayout />
-                </UserHistoryProvider>
-            </WatchlistProvider>
-        </LanguageProvider>
+        <ProfileProvider>
+            <LanguageProvider>
+                <WatchlistProvider>
+                    <UserHistoryProvider>
+                        <MainApp />
+                    </UserHistoryProvider>
+                </WatchlistProvider>
+            </LanguageProvider>
+        </ProfileProvider>
     );
 };
 
