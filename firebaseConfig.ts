@@ -1,0 +1,24 @@
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+/**
+ * ⚠️ IMPORTANTE: REEMPLAZA ESTOS DATOS
+ * Ve a: Firebase Console > Configuración del Proyecto > General > Tus Apps
+ * Si no tienes una app creada, haz clic en el icono de </> (Web)
+ */
+const firebaseConfig = {
+  apiKey: "AIzaSyAUY3mbdZ3_MgxDDVE0qRwDOBqIuSOTdOU",
+  authDomain: "seikoyt-streaming.firebaseapp.com",
+  projectId: "seikoyt-streaming",
+  storageBucket: "seikoyt-streaming.firebasestorage.app",
+  messagingSenderId: "329984889094",
+  appId: "1:329984889094:web:2c4814f98f9bb0edb74e87"
+};
+
+// Check if the user has replaced the placeholders
+export const isConfigured = firebaseConfig.projectId !== "YOUR_PROJECT_ID";
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
