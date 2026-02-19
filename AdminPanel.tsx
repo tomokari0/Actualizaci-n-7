@@ -1,12 +1,15 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from './firebaseConfig';
-import { collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { collection, addDoc, serverTimestamp, getDocs, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { Content } from './types';
 
 const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [loading, setLoading] = useState(false);
-    const [type, setType] = useState<'movie' | 'series'>('movie');
+    const [type, setType] = useState<'movie' | 'series' | 'episode'>('movie');
+    const [seriesList, setSeriesList] = useState<Content[]>([]);
+    const [selectedSeriesId, setSelectedSeriesId] = useState('');
+    
     const [formData, setFormData] = useState({
         title: '',
         description: '',
@@ -20,41 +23,70 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         genre: '',
         rating: 'PG-13',
         releaseYear: new Date().getFullYear(),
-        featured: false
+        featured: false,
+        // Episode specific
+        episodeNumber: 1,
+        duration: '24m'
     });
+
+    useEffect(() => {
+        if (type === 'episode') {
+            const fetchSeries = async () => {
+                const q = query(collection(db, "content"), where("type", "==", "series"));
+                const snap = await getDocs(q);
+                setSeriesList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Content)));
+            };
+            fetchSeries();
+        }
+    }, [type]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
 
         try {
-            const contentRef = collection(db, "content");
-            
-            // Filtrar tracks vacíos
             const filteredTracks: Record<string, string> = {};
             if (formData.audioTracks.es) filteredTracks.es = formData.audioTracks.es;
             if (formData.audioTracks.en) filteredTracks.en = formData.audioTracks.en;
 
-            const newContent = {
-                ...formData,
-                audioTracks: filteredTracks,
-                type,
-                genre: formData.genre.split(',').map(g => g.trim()),
-                releaseYear: Number(formData.releaseYear),
-                createdAt: serverTimestamp(),
-            };
-
-            const docRef = await addDoc(contentRef, newContent);
-            
-            if (type === 'series') {
-                alert(`¡Serie creada! 🎉\n\nID: ${docRef.id}\n\nPara añadir episodios, crea documentos en la sub-colección "episodes" dentro de este ID en Firebase.`);
+            if (type === 'episode') {
+                if (!selectedSeriesId) throw new Error("Debes seleccionar una serie");
+                
+                const episodesRef = collection(db, "content", selectedSeriesId, "episodes");
+                await addDoc(episodesRef, {
+                    title: formData.title,
+                    description: formData.description,
+                    thumbnailUrl: formData.thumbnailUrl,
+                    videoUrl: formData.videoUrl,
+                    audioTracks: filteredTracks,
+                    episodeNumber: Number(formData.episodeNumber),
+                    duration: formData.duration,
+                    createdAt: serverTimestamp()
+                });
+                alert("¡Episodio añadido con éxito! 🎬");
             } else {
-                alert("¡Película subida con éxito! 🎉");
+                const contentRef = collection(db, "content");
+                const newContent = {
+                    title: formData.title,
+                    description: formData.description,
+                    thumbnailUrl: formData.thumbnailUrl,
+                    backdropUrl: formData.backdropUrl,
+                    videoUrl: formData.videoUrl,
+                    audioTracks: filteredTracks,
+                    type,
+                    genre: formData.genre.split(',').map(g => g.trim()),
+                    releaseYear: Number(formData.releaseYear),
+                    rating: formData.rating,
+                    featured: formData.featured,
+                    createdAt: serverTimestamp(),
+                };
+                await addDoc(contentRef, newContent);
+                alert(type === 'series' ? "¡Serie creada! 🎉" : "¡Película subida! 🎉");
             }
             onClose();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error adding document: ", error);
-            alert("Error al subir el contenido. Revisa la consola.");
+            alert("Error: " + error.message);
         } finally {
             setLoading(false);
         }
@@ -69,26 +101,41 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
-                    <div className="flex gap-4 mb-8">
-                        <button 
-                            type="button"
-                            onClick={() => setType('movie')}
-                            className={`flex-1 py-4 rounded-xl font-bold transition-all tracking-widest ${type === 'movie' ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
-                        >
-                            PELÍCULA
-                        </button>
-                        <button 
-                            type="button"
-                            onClick={() => setType('series')}
-                            className={`flex-1 py-4 rounded-xl font-bold transition-all tracking-widest ${type === 'series' ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
-                        >
-                            SERIE
-                        </button>
+                    <div className="flex gap-2 mb-8">
+                        {['movie', 'series', 'episode'].map((t) => (
+                            <button 
+                                key={t}
+                                type="button"
+                                onClick={() => setType(t as any)}
+                                className={`flex-1 py-3 rounded-xl font-bold transition-all text-[10px] tracking-widest uppercase ${type === t ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
+                            >
+                                {t === 'movie' ? 'Película' : t === 'series' ? 'Serie' : 'Episodio'}
+                            </button>
+                        ))}
                     </div>
+
+                    {type === 'episode' && (
+                        <div className="flex flex-col gap-2 animate-fade-in mb-6">
+                            <label className="text-[10px] text-red-500 uppercase font-black tracking-widest">Seleccionar Serie</label>
+                            <select 
+                                className="bg-white/5 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-red-600"
+                                value={selectedSeriesId}
+                                onChange={e => setSelectedSeriesId(e.target.value)}
+                                required
+                            >
+                                <option value="" className="bg-[#121212]">-- Elige una serie --</option>
+                                {seriesList.map(s => (
+                                    <option key={s.id} value={s.id} className="bg-[#121212]">{s.title}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div className="flex flex-col gap-2">
-                            <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Título</label>
+                            <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">
+                                {type === 'episode' ? 'Título del Capítulo' : 'Título'}
+                            </label>
                             <input 
                                 className="bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
                                 value={formData.title}
@@ -96,58 +143,88 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 required
                             />
                         </div>
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Año</label>
-                            <input 
-                                type="number"
-                                className="bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
-                                value={formData.releaseYear}
-                                onChange={e => setFormData({...formData, releaseYear: parseInt(e.target.value)})}
-                                required
-                            />
-                        </div>
+                        {type === 'episode' ? (
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Número de Episodio</label>
+                                <input 
+                                    type="number"
+                                    className="bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                    value={formData.episodeNumber}
+                                    onChange={e => setFormData({...formData, episodeNumber: parseInt(e.target.value)})}
+                                    required
+                                />
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Año</label>
+                                <input 
+                                    type="number"
+                                    className="bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                    value={formData.releaseYear}
+                                    onChange={e => setFormData({...formData, releaseYear: parseInt(e.target.value)})}
+                                    required
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Descripción</label>
                         <textarea 
-                            className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none h-32 resize-none transition-all"
+                            className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none h-24 resize-none transition-all"
                             value={formData.description}
                             onChange={e => setFormData({...formData, description: e.target.value})}
                             required
                         />
                     </div>
 
-                    <div className="flex flex-col gap-2">
-                        <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Géneros (Separados por coma)</label>
-                        <input 
-                            className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
-                            value={formData.genre}
-                            onChange={e => setFormData({...formData, genre: e.target.value})}
-                            required
-                        />
-                    </div>
+                    {type !== 'episode' && (
+                        <div className="flex flex-col gap-2">
+                            <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Géneros (Separados por coma)</label>
+                            <input 
+                                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                value={formData.genre}
+                                onChange={e => setFormData({...formData, genre: e.target.value})}
+                                required={type !== 'episode'}
+                            />
+                        </div>
+                    )}
 
                     <div className="space-y-4 pt-4 border-t border-white/5">
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">URL Miniatura</label>
-                            <input 
-                                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
-                                value={formData.thumbnailUrl}
-                                onChange={e => setFormData({...formData, thumbnailUrl: e.target.value})}
-                                required
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">URL Miniatura</label>
+                                <input 
+                                    className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                    value={formData.thumbnailUrl}
+                                    onChange={e => setFormData({...formData, thumbnailUrl: e.target.value})}
+                                    required
+                                />
+                            </div>
+                            {type !== 'episode' ? (
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">URL Fondo (Hero)</label>
+                                    <input 
+                                        className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                        value={formData.backdropUrl}
+                                        onChange={e => setFormData({...formData, backdropUrl: e.target.value})}
+                                        required={type !== 'episode'}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Duración (ej: 24m)</label>
+                                    <input 
+                                        className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                        value={formData.duration}
+                                        onChange={e => setFormData({...formData, duration: e.target.value})}
+                                        required
+                                    />
+                                </div>
+                            )}
                         </div>
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">URL Fondo (Hero)</label>
-                            <input 
-                                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
-                                value={formData.backdropUrl}
-                                onChange={e => setFormData({...formData, backdropUrl: e.target.value})}
-                                required
-                            />
-                        </div>
-                        {type === 'movie' && (
+
+                        {type !== 'series' && (
                             <div className="space-y-4 animate-fade-in">
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] text-red-500 uppercase font-black tracking-widest">URL Video Principal (Fallback)</label>
@@ -156,6 +233,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                         value={formData.videoUrl}
                                         onChange={e => setFormData({...formData, videoUrl: e.target.value})}
                                         placeholder="Ej: https://..."
+                                        required={type === 'episode'}
                                     />
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -183,29 +261,31 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         {type === 'series' && (
                             <div className="p-4 bg-red-600/10 rounded-xl border border-red-600/20 animate-fade-in">
                                 <p className="text-xs text-red-400 font-bold leading-relaxed">
-                                    ℹ️ Las series no tienen video URL principal. Los capítulos se suben por separado como documentos en la sub-colección "episodes" del ID generado.
+                                    ℹ️ Las series no tienen video URL principal. Una vez creada, usa la pestaña "EPISODIO" para añadir sus capítulos.
                                 </p>
                             </div>
                         )}
                     </div>
 
-                    <div className="flex items-center gap-3 pt-4">
-                        <input 
-                            type="checkbox" 
-                            id="featured" 
-                            className="w-6 h-6 rounded accent-red-600 cursor-pointer"
-                            checked={formData.featured}
-                            onChange={e => setFormData({...formData, featured: e.target.checked})}
-                        />
-                        <label htmlFor="featured" className="text-gray-300 font-bold text-sm cursor-pointer">Destacar en la pantalla de inicio</label>
-                    </div>
+                    {type !== 'episode' && (
+                        <div className="flex items-center gap-3 pt-4">
+                            <input 
+                                type="checkbox" 
+                                id="featured" 
+                                className="w-6 h-6 rounded accent-red-600 cursor-pointer"
+                                checked={formData.featured}
+                                onChange={e => setFormData({...formData, featured: e.target.checked})}
+                            />
+                            <label htmlFor="featured" className="text-gray-300 font-bold text-sm cursor-pointer">Destacar en la pantalla de inicio</label>
+                        </div>
+                    )}
 
                     <button 
                         type="submit" 
                         disabled={loading}
                         className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-5 rounded-xl mt-6 transition-all transform active:scale-95 disabled:opacity-50 tracking-[0.4em] uppercase shadow-2xl shadow-red-600/20"
                     >
-                        {loading ? "PROCESANDO..." : type === 'movie' ? "SUBIR PELÍCULA" : "CREAR SERIE"}
+                        {loading ? "PROCESANDO..." : type === 'movie' ? "SUBIR PELÍCULA" : type === 'series' ? "CREAR SERIE" : "AÑADIR EPISODIO"}
                     </button>
                 </form>
             </div>
