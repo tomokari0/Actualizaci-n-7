@@ -356,6 +356,14 @@ Lamento haberme tardado en subirlo nuevamente, esta vez tuve problemas con el mi
             thumbnailUrl: 'https://2qhd7azteo.ucarecd.net/94e2cc05-196c-4ccd-bade-61b7fa80f998/LaexdeAlfredoNuevospersonajesLucy797LaserieCaptulo11BQ.jpg',
             videoUrl: 'https://2qhd7azteo.ucarecd.net/42653f68-f000-427a-9d28-de9558dc2b2d/LaexdeAlfredoNuevospersonajesLucy797LaserieCaptulo111080p_30fps_H264128kbit_AAC.mp4',
             duration: '23m'
+          },
+          {
+            id: 's1e12',
+            title: 'Las nuevas mascotas (Parte 1/2)',
+            description: 'Sin descripcion.',
+            thumbnailUrl: 'https://602td9md5u.ucarecd.net/7a9bd90b-7c6d-4061-858a-a0a53eec7f86/maxresdefault.jpg',
+            videoUrl: 'https://602td9md5u.ucarecd.net/e51e9041-198a-4d75-aad0-6f607b2889d5/TheNewPetsPart12Chapter12LucysCrazyWorld1080p_30fps_H264128kbit_AAC.mp4',
+            duration: '15m'
           }
         ]
       }
@@ -543,6 +551,17 @@ Lamento haberme tardado en subirlo nuevamente, esta vez tuve problemas con el mi
     videoUrl: 'https://57zt5wokny.ucarecd.net/8080efe2-ff01-4827-a023-b8b539b019a2/Desdepequeos2IMiniPeliculaIStarTime1080p_30fps_H264128kbit_AAC.mp4',
     trailerUrl: 'https://57zt5wokny.ucarecd.net/8080efe2-ff01-4827-a023-b8b539b019a2/Desdepequeos2IMiniPeliculaIStarTime1080p_30fps_H264128kbit_AAC.mp4',
   }
+];
+
+export const AUDIO_TRACKS = [
+    { code: 'es', name: 'Español Latino' },
+    { code: 'en', name: 'Inglés' }
+];
+
+export const USER_LEVELS = [
+    { id: 'novato', name: 'Novato', minSeconds: 0, color: 'text-gray-400', icon: '🌱' },
+    { id: 'fan', name: 'Seiko-Fan', minSeconds: 3600, color: 'text-blue-400', icon: '⭐' },
+    { id: 'leyenda', name: 'Leyenda', minSeconds: 36000, color: 'text-yellow-400', icon: '👑' }
 ];
 
 export const LANGUAGES = [

@@ -33,6 +33,10 @@ export const sendMessageToChatbot = async (message: string): Promise<string> => 
   }
 };
 
+/**
+ * FIX: Removed Modality.IMAGE from config for gemini-2.5-flash-image as per nano banana series guidelines.
+ * Iterating through parts to find the generated image data.
+ */
 export const editImageWithPrompt = async (base64Image: string, mimeType: string, prompt: string): Promise<string | null> => {
   if (!ai) {
     console.error("AI service is not configured. Missing API Key.");
@@ -53,9 +57,6 @@ export const editImageWithPrompt = async (base64Image: string, mimeType: string,
                     text: prompt,
                 },
             ],
-        },
-        config: {
-            responseModalities: [Modality.IMAGE],
         },
     });
 
@@ -151,7 +152,8 @@ export const getPersonalizedRecommendations = async (
               type: Type.ARRAY,
               items: { type: Type.STRING }
             }
-          }
+          },
+          propertyOrdering: ["recommendedIds"]
         }
       }
     });

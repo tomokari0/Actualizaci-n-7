@@ -7,6 +7,7 @@ export interface Episode {
   description: string;
   thumbnailUrl: string;
   videoUrl: string;
+  audioTracks?: Record<string, string>; // e.g., { 'es': 'url1', 'en': 'url2' }
   duration: string; // e.g., "24m"
   introStart?: number;
   introEnd?: number;
@@ -46,6 +47,7 @@ export interface Content {
  
   // Movie specific (or default fallback)
   videoUrl?: string;
+  audioTracks?: Record<string, string>; // e.g., { 'es': 'url1', 'en': 'url2' }
   introStart?: number;
   introEnd?: number;
  
@@ -73,4 +75,7 @@ export interface UserProfile {
   name: string;
   avatar: string;
   isKid?: boolean;
+  streak?: number;
+  lastLogin?: string; // ISO date string
+  totalWatchTime?: number; // Total seconds watched
 }
