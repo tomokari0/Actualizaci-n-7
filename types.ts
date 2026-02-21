@@ -36,6 +36,7 @@ export interface DrmConfig {
 export interface Content {
   id: string;
   type: 'movie' | 'series'; // Differentiator
+  source?: 'internal' | 'youtube';
   title: string;
   description: string;
   thumbnailUrl: string;
@@ -44,6 +45,7 @@ export interface Content {
   rating: string;
   releaseYear: number;
   featured?: boolean;
+  youtubeId?: string;
  
   // Movie specific (or default fallback)
   videoUrl?: string;

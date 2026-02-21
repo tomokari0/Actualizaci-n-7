@@ -93,21 +93,21 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-[#121212] w-full max-w-2xl rounded-2xl border border-white/5 shadow-2xl p-10">
-                <div className="flex justify-between items-center mb-10 border-b border-white/5 pb-6">
-                    <h2 className="text-4xl font-bebas text-red-600 tracking-wider">Editor de Contenido</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">Cerrar</button>
+        <div className="fixed inset-0 bg-black/95 z-[100] flex items-center justify-center p-2 md:p-4 overflow-y-auto">
+            <div className="bg-[#121212] w-full max-w-2xl rounded-2xl border border-white/5 shadow-2xl p-6 md:p-10 my-auto">
+                <div className="flex justify-between items-center mb-6 md:mb-10 border-b border-white/5 pb-4 md:pb-6">
+                    <h2 className="text-2xl md:text-4xl font-bebas text-red-600 tracking-wider">Editor de Contenido</h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-2">Cerrar</button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
-                    <div className="flex gap-2 mb-8">
+                    <div className="flex gap-2 mb-6 md:mb-8">
                         {['movie', 'series', 'episode'].map((t) => (
                             <button 
                                 key={t}
                                 type="button"
                                 onClick={() => setType(t as any)}
-                                className={`flex-1 py-3 rounded-xl font-bold transition-all text-[10px] tracking-widest uppercase ${type === t ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
+                                className={`flex-1 py-2 md:py-3 rounded-lg md:rounded-xl font-bold transition-all text-[8px] md:text-[10px] tracking-widest uppercase ${type === t ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
                             >
                                 {t === 'movie' ? 'Película' : t === 'series' ? 'Serie' : 'Episodio'}
                             </button>
@@ -115,10 +115,10 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     </div>
 
                     {type === 'episode' && (
-                        <div className="flex flex-col gap-2 animate-fade-in mb-6">
+                        <div className="flex flex-col gap-2 animate-fade-in mb-4 md:mb-6">
                             <label className="text-[10px] text-red-500 uppercase font-black tracking-widest">Seleccionar Serie</label>
                             <select 
-                                className="bg-white/5 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-red-600"
+                                className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white outline-none focus:border-red-600 text-sm"
                                 value={selectedSeriesId}
                                 onChange={e => setSelectedSeriesId(e.target.value)}
                                 required
@@ -131,13 +131,13 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
                         <div className="flex flex-col gap-2">
                             <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">
                                 {type === 'episode' ? 'Título del Capítulo' : 'Título'}
                             </label>
                             <input 
-                                className="bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
                                 value={formData.title}
                                 onChange={e => setFormData({...formData, title: e.target.value})}
                                 required
@@ -148,7 +148,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Número de Episodio</label>
                                 <input 
                                     type="number"
-                                    className="bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                    className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
                                     value={formData.episodeNumber}
                                     onChange={e => setFormData({...formData, episodeNumber: parseInt(e.target.value)})}
                                     required
@@ -159,7 +159,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Año</label>
                                 <input 
                                     type="number"
-                                    className="bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                    className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
                                     value={formData.releaseYear}
                                     onChange={e => setFormData({...formData, releaseYear: parseInt(e.target.value)})}
                                     required
@@ -171,7 +171,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     <div className="flex flex-col gap-2">
                         <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Descripción</label>
                         <textarea 
-                            className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none h-24 resize-none transition-all"
+                            className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none h-20 md:h-24 resize-none transition-all text-sm"
                             value={formData.description}
                             onChange={e => setFormData({...formData, description: e.target.value})}
                             required
@@ -182,7 +182,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         <div className="flex flex-col gap-2">
                             <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Géneros (Separados por coma)</label>
                             <input 
-                                className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
                                 value={formData.genre}
                                 onChange={e => setFormData({...formData, genre: e.target.value})}
                                 required={type !== 'episode'}
@@ -195,7 +195,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             <div className="flex flex-col gap-2">
                                 <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">URL Miniatura</label>
                                 <input 
-                                    className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                    className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs"
                                     value={formData.thumbnailUrl}
                                     onChange={e => setFormData({...formData, thumbnailUrl: e.target.value})}
                                     required
@@ -205,7 +205,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">URL Fondo (Hero)</label>
                                     <input 
-                                        className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                        className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs"
                                         value={formData.backdropUrl}
                                         onChange={e => setFormData({...formData, backdropUrl: e.target.value})}
                                         required={type !== 'episode'}
@@ -215,7 +215,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Duración (ej: 24m)</label>
                                     <input 
-                                        className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                        className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
                                         value={formData.duration}
                                         onChange={e => setFormData({...formData, duration: e.target.value})}
                                         required
@@ -229,7 +229,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] text-red-500 uppercase font-black tracking-widest">URL Video Principal (Fallback)</label>
                                     <input 
-                                        className="w-full bg-white/5 border border-red-600/30 p-4 rounded-xl text-white focus:border-red-600 outline-none transition-all"
+                                        className="w-full bg-white/5 border border-red-600/30 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs"
                                         value={formData.videoUrl}
                                         onChange={e => setFormData({...formData, videoUrl: e.target.value})}
                                         placeholder="Ej: https://..."
@@ -240,7 +240,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                     <div className="flex flex-col gap-2">
                                         <label className="text-[10px] text-blue-400 uppercase font-black tracking-widest">URL Audio: Español Latino</label>
                                         <input 
-                                            className="w-full bg-white/5 border border-blue-400/30 p-4 rounded-xl text-white focus:border-blue-400 outline-none transition-all"
+                                            className="w-full bg-white/5 border border-blue-400/30 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-blue-400 outline-none transition-all text-xs"
                                             value={formData.audioTracks.es}
                                             onChange={e => setFormData({...formData, audioTracks: {...formData.audioTracks, es: e.target.value}})}
                                             placeholder="URL de video con audio ES"
@@ -249,7 +249,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                     <div className="flex flex-col gap-2">
                                         <label className="text-[10px] text-purple-400 uppercase font-black tracking-widest">URL Audio: Inglés</label>
                                         <input 
-                                            className="w-full bg-white/5 border border-purple-400/30 p-4 rounded-xl text-white focus:border-purple-400 outline-none transition-all"
+                                            className="w-full bg-white/5 border border-purple-400/30 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-purple-400 outline-none transition-all text-xs"
                                             value={formData.audioTracks.en}
                                             onChange={e => setFormData({...formData, audioTracks: {...formData.audioTracks, en: e.target.value}})}
                                             placeholder="URL de video con audio EN"

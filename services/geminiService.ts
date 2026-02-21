@@ -16,7 +16,7 @@ if (!API_KEY) {
     chatModel = ai.chats.create({
       model: 'gemini-3-flash-preview',
       config: {
-        systemInstruction: 'You are SeikoBot, a helpful assistant for the SeikoYT video platform. You know about movies, TV shows, and can help users navigate the platform. Your tone is friendly and cinematic.',
+        systemInstruction: 'You are SeikoBot, a helpful assistant for the SeikoTV video platform. You know about movies, TV shows, and can help users navigate the platform. Your tone is friendly and cinematic.',
       },
     });
 }
