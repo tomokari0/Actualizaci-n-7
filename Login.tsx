@@ -9,7 +9,7 @@ import {
     sendPasswordResetEmail
 } from 'firebase/auth';
 
-const Login: React.FC = () => {
+const Login: React.FC<{ onClose?: () => void }> = ({ onClose }) => {
     const [isRegistering, setIsRegistering] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -22,6 +22,7 @@ const Login: React.FC = () => {
         try {
             const provider = new GoogleAuthProvider();
             await signInWithPopup(auth, provider);
+            if (onClose) onClose();
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -39,6 +40,7 @@ const Login: React.FC = () => {
             } else {
                 await signInWithEmailAndPassword(auth, email, password);
             }
+            if (onClose) onClose();
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -129,13 +131,23 @@ const Login: React.FC = () => {
                     Google
                 </button>
 
-                <div className="mt-8 text-center space-y-2">
+                <div className="mt-8 text-center space-y-4">
                     <button 
                         onClick={() => setIsRegistering(!isRegistering)}
                         className="text-xs text-gray-500 hover:text-white transition-colors block w-full"
                     >
                         {isRegistering ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? Regístrate'}
                     </button>
+                    
+                    {onClose && (
+                        <button 
+                            onClick={onClose}
+                            className="w-full border border-white/10 hover:bg-white/5 text-gray-400 hover:text-white py-3 rounded-xl transition-all text-[10px] font-black uppercase tracking-[0.2em]"
+                        >
+                            Continuar como Invitado
+                        </button>
+                    )}
+
                     {!isRegistering && (
                         <button 
                             onClick={handleResetPassword}

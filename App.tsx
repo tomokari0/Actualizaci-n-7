@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, createContext, useContext, useMemo, useCallback } from 'react';
 import { Content, Episode, Season, UserProfile } from './types';
-import { LANGUAGES, TRANSLATIONS, MOCK_CONTENT, AUDIO_TRACKS } from './constants';
+import { LANGUAGES, TRANSLATIONS, MOCK_CONTENT } from './constants';
 import { db, isConfigured } from './firebaseConfig';
 import { collection, onSnapshot, query, orderBy, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import AdminPanel from './AdminPanel';
@@ -171,7 +171,7 @@ const VideoPlayer: React.FC<{
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [currentAudio, setCurrentAudio] = useState('es');
+    const [currentAudio, setCurrentAudio] = useState('en');
     const [loading, setLoading] = useState(true);
     const [lastTime, setLastTime] = useState(0);
     const [showControls, setShowControls] = useState(true);
@@ -489,13 +489,13 @@ const VideoPlayer: React.FC<{
                             >
                                 <AudioIcon className="w-5 h-5 md:w-6 md:h-6" />
                                 <span className="text-[10px] md:text-xs font-bold hidden md:block uppercase tracking-tighter">
-                                    {AUDIO_TRACKS.find(t => t.code === currentAudio)?.name || currentAudio}
+                                    {LANGUAGES.find(t => t.code === currentAudio)?.name || currentAudio}
                                 </span>
                             </button>
                             
                             {isAudioMenuOpen && (
                                 <div className="absolute top-full right-0 mt-2 w-40 md:w-48 bg-black/90 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl animate-scale-in">
-                                    {AUDIO_TRACKS.filter(t => availableTracks.includes(t.code)).map(track => (
+                                    {LANGUAGES.filter(t => availableTracks.includes(t.code)).map(track => (
                                         <button
                                             key={track.code}
                                             onClick={() => handleAudioChange(track.code)}

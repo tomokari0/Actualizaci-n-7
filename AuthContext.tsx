@@ -38,19 +38,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const unsubscribeProfile = onSnapshot(profileRef, async (docSnap) => {
                     if (docSnap.exists()) {
                         setProfile({ id: docSnap.id, ...docSnap.data() } as UserProfile);
+                        setLoading(false);
                     } else {
                         // Create profile if it doesn't exist
-                        const isAdmin = firebaseUser.email === 'tomokari07@gmail.com';
-                        const newProfile: UserProfile = {
-                            id: firebaseUser.uid,
-                            name: firebaseUser.displayName || 'Usuario',
-                            avatar: firebaseUser.photoURL || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
-                            role: isAdmin ? 'admin' : 'user',
-                            email: firebaseUser.email || '',
-                        };
-                        await setDoc(profileRef, newProfile);
-                        setProfile(newProfile);
+                        try {
+                            const isAdmin = firebaseUser.email === 'tomokari07@gmail.com';
+                            const newProfile: UserProfile = {
+                                id: firebaseUser.uid,
+                                name: firebaseUser.displayName || 'Usuario',
+                                avatar: firebaseUser.photoURL || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+                                role: isAdmin ? 'admin' : 'user',
+                                email: firebaseUser.email || '',
+                            };
+                            await setDoc(profileRef, newProfile);
+                            // The snapshot listener will trigger again after setDoc
+                        } catch (err) {
+                            console.error("Error creating initial profile:", err);
+                            setLoading(false);
+                        }
                     }
+                }, (error) => {
+                    console.error("Profile Snapshot Error:", error);
                     setLoading(false);
                 });
 

@@ -19,8 +19,8 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         backdropUrl: '',
         videoUrl: '', // URL principal (fallback)
         audioTracks: [
-            { lang: 'es', url: '' },
-            { lang: 'en', url: '' }
+            { lang: 'en', url: '' },
+            { lang: 'es-419', url: '' }
         ],
         genre: '',
         rating: 'PG-13',

@@ -553,14 +553,10 @@ Lamento haberme tardado en subirlo nuevamente, esta vez tuve problemas con el mi
   }
 ];
 
-export const AUDIO_TRACKS = [
-    { code: 'es', name: 'Español Latino' },
-    { code: 'en', name: 'Inglés' }
-];
-
 export const LANGUAGES = [
     { code: 'en', name: 'English' },
-    { code: 'es-419', name: 'Spanish (Latin America)' },
+    { code: 'es-419', name: 'Español Latino' },
+    { code: 'es', name: 'Español' },
     { code: 'ja', name: 'Japanese' },
     { code: 'ar', name: 'Arabic' },
     { code: 'pt', name: 'Portuguese' },
