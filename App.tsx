@@ -6,6 +6,9 @@ import { db, isConfigured } from './firebaseConfig';
 import { collection, onSnapshot, query, orderBy, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import AdminPanel from './AdminPanel';
 import ContentUploadForm from './ContentUploadForm';
+import { AuthProvider, useAuth } from './AuthContext';
+import Login from './Login';
+import ProfileEdit from './ProfileEdit';
 
 declare global {
   interface Window {
@@ -24,39 +27,6 @@ const formatTime = (timeInSeconds: number): string => {
     const minutes = Math.floor(timeInSeconds / 60);
     const seconds = Math.floor(timeInSeconds % 60);
     return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-};
-
-// --- PROFILE CONTEXT ---
-type ProfileContextType = {
-    currentProfile: UserProfile | null;
-    profiles: UserProfile[];
-    switchProfile: (profileId: string) => void;
-    logout: () => void;
-};
-
-const ProfileContext = createContext<ProfileContextType>({
-    currentProfile: null,
-    profiles: [],
-    switchProfile: () => {},
-    logout: () => {},
-});
-
-export const useProfile = () => useContext(ProfileContext);
-
-const DEFAULT_AVATARS = [
-    "https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png",
-    "https://mir-s3-cdn-cf.behance.net/project_modules/disp/84c20033850498.56ba69ac290ea.png"
-];
-
-export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [profiles] = useState<UserProfile[]>([{ id: '1', name: 'Admin', avatar: DEFAULT_AVATARS[0] }]);
-    const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
-
-    const currentProfile = useMemo(() => profiles.find(p => p.id === currentProfileId) || null, [profiles, currentProfileId]);
-    const switchProfile = (id: string) => setCurrentProfileId(id);
-    const logout = () => setCurrentProfileId(null);
-
-    return <ProfileContext.Provider value={{ currentProfile, profiles, switchProfile, logout }}>{children}</ProfileContext.Provider>;
 };
 
 // --- LANGUAGE CONTEXT ---
@@ -93,7 +63,7 @@ const UserHistoryContext = createContext<UserHistoryContextType>({
 });
 export const useUserHistory = () => useContext(UserHistoryContext);
 export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { currentProfile } = useProfile();
+    const { profile: currentProfile } = useAuth();
     const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
 
     const updateProgress = (id: string, currentTime: number, duration: number) => {
@@ -756,7 +726,7 @@ type Page = 'home' | 'movies' | 'series';
 type Filter = 'all' | 'recent' | 'popular' | 'following';
 
 const MainApp: React.FC = () => {
-    const { currentProfile, logout, switchProfile, profiles } = useProfile();
+    const { profile: currentProfile, isAdmin, loading } = useAuth();
     const { t } = useLanguage();
     const { watchProgress } = useUserHistory();
 
@@ -766,6 +736,7 @@ const MainApp: React.FC = () => {
     const [selectedVideo, setSelectedVideo] = useState<Content | null>(null);
     const [isAdminOpen, setIsAdminOpen] = useState(false);
     const [isUploadFormOpen, setIsUploadFormOpen] = useState(false);
+    const [isProfileEditOpen, setIsProfileEditOpen] = useState(false);
     const [isAdminModeActive, setIsAdminModeActive] = useState(false);
     const [logoClicks, setLogoClicks] = useState(0);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -777,6 +748,10 @@ const MainApp: React.FC = () => {
     const [autoSkipIntro, setAutoSkipIntro] = useState(() => {
         return localStorage.getItem('seikotv_auto_skip_intro') === 'true';
     });
+
+    const logout = () => {
+        import('./firebaseConfig').then(({ auth }) => auth.signOut());
+    };
 
     useEffect(() => {
         localStorage.setItem('seikotv_auto_skip_intro', autoSkipIntro.toString());
@@ -907,22 +882,16 @@ const MainApp: React.FC = () => {
         return list;
     }, [contentList, currentPage, activeFilter, watchProgress]);
 
-    if (!currentProfile) {
+    if (loading) {
         return (
-            <div className="fixed inset-0 bg-[#0a0a0a] flex flex-col items-center justify-center p-6 animate-fade-in overflow-y-auto">
-                <h1 className="text-4xl md:text-6xl font-bebas text-white mb-8 md:mb-16 tracking-widest uppercase text-center border-b-2 border-red-600 pb-2">SeikoTV</h1>
-                <div className="flex flex-wrap justify-center gap-6 md:gap-12 max-w-4xl">
-                    {profiles.map(p => (
-                        <div key={p.id} onClick={() => switchProfile(p.id)} className="group flex flex-col items-center space-y-3 md:space-y-4 cursor-pointer">
-                            <div className="w-28 h-28 md:w-44 md:h-44 rounded-2xl bg-gray-900 border-4 border-transparent group-hover:border-red-600 transition-all overflow-hidden shadow-2xl group-hover:scale-105 transform">
-                                <img src={p.avatar} className="w-full h-full object-cover" />
-                            </div>
-                            <span className="text-gray-400 group-hover:text-white text-xl md:text-3xl font-bebas tracking-widest transition-colors uppercase">{p.name}</span>
-                        </div>
-                    ))}
-                </div>
+            <div className="fixed inset-0 bg-[#0a0a0a] flex items-center justify-center">
+                <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
+    }
+
+    if (!currentProfile) {
+        return <Login />;
     }
 
     return (
@@ -987,12 +956,18 @@ const MainApp: React.FC = () => {
                         <svg className="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 group-hover:text-white transition-colors">Subir</span>
                     </button>
-                    {isAdminModeActive && currentProfile.name === 'Admin' && (
+                    {isAdminModeActive && isAdmin && (
                         <button onClick={() => setIsAdminOpen(true)} className="text-white hover:text-red-500 transition-all">
                             <svg className="w-6 h-6 md:w-7 md:h-7" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c.59-.24 1.13.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.11-.22.06-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
                         </button>
                     )}
-                    <img onClick={logout} src={currentProfile.avatar} className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl cursor-pointer border-2 border-transparent hover:border-red-600 transition-all shadow-xl" />
+                    <div className="relative group">
+                        <img src={currentProfile.avatar} className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl cursor-pointer border-2 border-transparent hover:border-red-600 transition-all shadow-xl" />
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-black/95 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all p-2 z-50">
+                            <button onClick={() => setIsProfileEditOpen(true)} className="w-full text-left px-4 py-2 text-xs font-bold hover:bg-white/5 rounded-lg transition-colors">Editar Perfil</button>
+                            <button onClick={logout} className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">Cerrar Sesión</button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -1132,19 +1107,20 @@ const MainApp: React.FC = () => {
             )}
             {isAdminOpen && <AdminPanel onClose={() => setIsAdminOpen(false)} />}
             {isUploadFormOpen && <ContentUploadForm onClose={() => setIsUploadFormOpen(false)} />}
+            {isProfileEditOpen && <ProfileEdit onClose={() => setIsProfileEditOpen(false)} />}
             {showFeedback && currentProfile && <FeedbackToast userId={currentProfile.id} onClose={() => setShowFeedback(false)} />}
         </div>
     );
 };
 
 const App: React.FC = () => (
-    <ProfileProvider>
+    <AuthProvider>
         <LanguageProvider>
             <UserHistoryProvider>
                 <MainApp />
             </UserHistoryProvider>
         </LanguageProvider>
-    </ProfileProvider>
+    </AuthProvider>
 );
 
 export default App;

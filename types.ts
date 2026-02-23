@@ -78,6 +78,8 @@ export interface UserProfile {
   id: string;
   name: string;
   avatar: string;
+  role: 'user' | 'admin';
+  email?: string;
   isKid?: boolean;
   streak?: number;
   lastLogin?: string; // ISO date string
