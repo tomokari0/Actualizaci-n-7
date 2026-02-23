@@ -11,6 +11,7 @@ export interface Episode {
   duration: string; // e.g., "24m"
   introStart?: number;
   introEnd?: number;
+  skipIntro?: number;
 }
 
 export interface Season {
@@ -52,6 +53,7 @@ export interface Content {
   audioTracks?: Record<string, string>; // e.g., { 'es': 'url1', 'en': 'url2' }
   introStart?: number;
   introEnd?: number;
+  skipIntro?: number;
  
   // Series specific
   seasons?: Season[];

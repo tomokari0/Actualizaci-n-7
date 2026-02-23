@@ -138,7 +138,7 @@ export const getPersonalizedRecommendations = async (
         - Recent Searches: ${searchQueries.join(', ')}
 
         Available Content Catalog:
-        ${JSON.stringify(availableContent)}
+        ${availableContent.map(c => `${c.title} (${c.genre.join(', ')}): ${c.description}`).join('\n')}
 
         Task: Select the top 8 content IDs from the catalog that match the user's preferences based on their history and likes. 
         Prioritize items similar to what they liked and searched for. Do not include items they have likely already watched if they are not re-watchable types.

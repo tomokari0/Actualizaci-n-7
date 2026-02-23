@@ -1,16 +1,20 @@
 
 import React, { useState, useEffect, useRef, createContext, useContext, useMemo, useCallback } from 'react';
 import { Content, Episode, Season, UserProfile } from './types';
-import { LANGUAGES, TRANSLATIONS, MOCK_CONTENT, AUDIO_TRACKS, USER_LEVELS } from './constants';
+import { LANGUAGES, TRANSLATIONS, MOCK_CONTENT, AUDIO_TRACKS } from './constants';
 import { db, isConfigured } from './firebaseConfig';
-import { collection, onSnapshot, query, orderBy, getDocs, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { collection, onSnapshot, query, orderBy, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
 import AdminPanel from './AdminPanel';
+import ContentUploadForm from './ContentUploadForm';
 
 declare global {
   interface Window {
     JitsiMeetExternalAPI: any;
     adsbygoogle: any;
     shaka: any;
+    YT: any;
+    onYouTubeIframeAPIReady: () => void;
+    seikotv_current_time: number;
   }
 }
 
@@ -81,46 +85,23 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 type WatchProgress = { currentTime: number; duration: number; lastWatched: number; };
 type UserHistoryContextType = {
     watchProgress: Record<string, WatchProgress>;
-    totalWatchTime: number;
     updateProgress: (id: string, currentTime: number, duration: number) => void;
 };
 const UserHistoryContext = createContext<UserHistoryContextType>({
     watchProgress: {},
-    totalWatchTime: 0,
     updateProgress: () => {},
 });
 export const useUserHistory = () => useContext(UserHistoryContext);
 export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { currentProfile } = useProfile();
     const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
-    const [totalWatchTime, setTotalWatchTime] = useState(0);
-
-    useEffect(() => {
-        if (!currentProfile) return;
-        const timeKey = `seikotv_total_time_${currentProfile.id}`;
-        setTotalWatchTime(parseInt(localStorage.getItem(timeKey) || '0'));
-    }, [currentProfile]);
 
     const updateProgress = (id: string, currentTime: number, duration: number) => {
         setWatchProgress(prev => {
-            const prevProgress = prev[id];
-            const delta = prevProgress ? Math.max(0, currentTime - prevProgress.currentTime) : 0;
-            
-            // Only add delta if it's reasonable (e.g. not a seek)
-            if (delta > 0 && delta < 5) {
-                setTotalWatchTime(t => {
-                    const newTotal = t + delta;
-                    if (currentProfile) {
-                        localStorage.setItem(`seikotv_total_time_${currentProfile.id}`, Math.floor(newTotal).toString());
-                    }
-                    return newTotal;
-                });
-            }
-
             return { ...prev, [id]: { currentTime, duration, lastWatched: Date.now() } };
         });
     };
-    return <UserHistoryContext.Provider value={{ watchProgress, totalWatchTime, updateProgress }}>{children}</UserHistoryContext.Provider>;
+    return <UserHistoryContext.Provider value={{ watchProgress, updateProgress }}>{children}</UserHistoryContext.Provider>;
 };
 
 // --- ICONS ---
@@ -128,7 +109,6 @@ const PlayIcon = ({ className }: { className?: string }) => <svg className={clas
 const NextIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>;
 const ListIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>;
 const AudioIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>;
-const FireIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.5 3.5 6 2.136 2.136 2.107 5.558 0 7.707a5.5 5.5 0 0 1-7.707 0z"/></svg>;
 const SearchIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
 
 // --- FEEDBACK TOAST COMPONENT ---
@@ -204,73 +184,149 @@ const FeedbackToast: React.FC<{
     );
 };
 
-// --- STREAK CONTEXT ---
-type StreakContextType = {
-    streak: number;
-};
-const StreakContext = createContext<StreakContextType>({ streak: 0 });
-export const useStreak = () => useContext(StreakContext);
-export const StreakProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { currentProfile } = useProfile();
-    const [streak, setStreak] = useState(0);
-
-    useEffect(() => {
-        if (!currentProfile) return;
-
-        const streakKey = `seikotv_streak_${currentProfile.id}`;
-        const lastLoginKey = `seikotv_last_login_${currentProfile.id}`;
-        
-        const storedStreak = parseInt(localStorage.getItem(streakKey) || '0');
-        const storedLastLogin = localStorage.getItem(lastLoginKey);
-        
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayStr = today.toISOString().split('T')[0];
-
-        if (!storedLastLogin) {
-            setStreak(1);
-            localStorage.setItem(streakKey, '1');
-            localStorage.setItem(lastLoginKey, todayStr);
-        } else {
-            const lastLoginDate = new Date(storedLastLogin);
-            lastLoginDate.setHours(0, 0, 0, 0);
-            
-            const diffTime = today.getTime() - lastLoginDate.getTime();
-            const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
-            if (diffDays === 1) {
-                const newStreak = storedStreak + 1;
-                setStreak(newStreak);
-                localStorage.setItem(streakKey, newStreak.toString());
-                localStorage.setItem(lastLoginKey, todayStr);
-            } else if (diffDays > 1) {
-                setStreak(1);
-                localStorage.setItem(streakKey, '1');
-                localStorage.setItem(lastLoginKey, todayStr);
-            } else {
-                setStreak(storedStreak);
-            }
-        }
-    }, [currentProfile]);
-
-    return <StreakContext.Provider value={{ streak }}>{children}</StreakContext.Provider>;
-};
-
 // --- REPRODUCTOR DINÁMICO DE SERIES ---
-const VideoPlayer: React.FC<{ item: Content; onClose: () => void }> = ({ item, onClose }) => {
+const VideoPlayer: React.FC<{ 
+    item: Content; 
+    onClose: () => void;
+    autoSkipIntro: boolean;
+    setAutoSkipIntro: (val: boolean) => void;
+}> = ({ item, onClose, autoSkipIntro, setAutoSkipIntro }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const ytPlayerRef = useRef<any>(null);
+    const ytContainerId = useMemo(() => `yt-player-${Math.random().toString(36).substr(2, 9)}`, []);
+    
     const { updateProgress, watchProgress } = useUserHistory();
     const [episodes, setEpisodes] = useState<Episode[]>([]);
     const [currentEpIndex, setCurrentEpIndex] = useState(0);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [currentAudio, setCurrentAudio] = useState('es');
     const [loading, setLoading] = useState(true);
     const [lastTime, setLastTime] = useState(0);
     const [showControls, setShowControls] = useState(true);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
+    const [showSkipButton, setShowSkipButton] = useState(false);
+    const [showSkipNotification, setShowSkipNotification] = useState(false);
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const activeVideo = useMemo(() => {
+        const getUrl = (data: any) => {
+            if (data.audioTracks && data.audioTracks[currentAudio]) {
+                return data.audioTracks[currentAudio];
+            }
+            return data.videoUrl || '';
+        };
+
+        if (item.type === 'movie') return { url: getUrl(item), id: item.id };
+        const ep = episodes[currentEpIndex];
+        return ep ? { url: getUrl(ep), id: `${item.id}_${ep.id}` } : { url: '', id: '' };
+    }, [item, episodes, currentEpIndex, currentAudio]);
+
+    // Detector de links de Uqload para conversión automática a Embed
+    const processedUrl = useMemo(() => {
+        const url = activeVideo.url;
+        if (url.includes('uqload.com') && !url.includes('embed-')) {
+            // Convierte https://uqload.com/xyz a https://uqload.com/embed-xyz.html
+            const idMatch = url.match(/uqload\.com\/([a-zA-Z0-9]+)/);
+            if (idMatch) return `https://uqload.com/embed-${idMatch[1]}.html`;
+        }
+        return url;
+    }, [activeVideo.url]);
+
+    // --- LÓGICA DE SKIP INTRO ---
+    const skipIntroTime = useMemo(() => {
+        const data = item.type === 'movie' ? item : episodes[currentEpIndex];
+        return data?.skipIntro || 0;
+    }, [item, episodes, currentEpIndex]);
+
+    const handleSkipIntro = useCallback(() => {
+        if (skipIntroTime > 0) {
+            if (videoRef.current) {
+                videoRef.current.currentTime = skipIntroTime;
+            } else if (ytPlayerRef.current && ytPlayerRef.current.seekTo) {
+                ytPlayerRef.current.seekTo(skipIntroTime, true);
+            }
+            setShowSkipButton(false);
+            setShowSkipNotification(true);
+            setTimeout(() => setShowSkipNotification(false), 3000);
+        }
+    }, [skipIntroTime]);
+
+    // Monitor de tiempo y skip automático
+    useEffect(() => {
+        const interval = setInterval(() => {
+            let current = 0;
+            let dur = 0;
+
+            if (videoRef.current) {
+                current = videoRef.current.currentTime;
+                dur = videoRef.current.duration;
+            } else if (ytPlayerRef.current && ytPlayerRef.current.getCurrentTime) {
+                current = ytPlayerRef.current.getCurrentTime();
+                dur = ytPlayerRef.current.getDuration();
+            }
+
+            if (current > 0) {
+                setCurrentTime(current);
+                setDuration(dur);
+                (window as any).seikotv_current_time = current;
+
+                // Lógica de botón Skip Intro
+                if (skipIntroTime > 0 && current >= 5 && current < skipIntroTime) {
+                    if (autoSkipIntro) {
+                        handleSkipIntro();
+                    } else {
+                        setShowSkipButton(true);
+                    }
+                } else {
+                    setShowSkipButton(false);
+                }
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [skipIntroTime, autoSkipIntro, handleSkipIntro]);
+
+    // Inicialización de YouTube Player
+    useEffect(() => {
+        if (item.source === 'youtube' && item.youtubeId) {
+            const initYT = () => {
+                if ((window as any).YT && (window as any).YT.Player) {
+                    ytPlayerRef.current = new (window as any).YT.Player(ytContainerId, {
+                        videoId: item.youtubeId,
+                        playerVars: {
+                            autoplay: 1,
+                            controls: 0,
+                            modestbranding: 1,
+                            rel: 0,
+                            showinfo: 0,
+                            enablejsapi: 1
+                        },
+                        events: {
+                            onReady: (event: any) => {
+                                event.target.playVideo();
+                                if (lastTime > 0) {
+                                    event.target.seekTo(lastTime, true);
+                                } else if (watchProgress[activeVideo.id]) {
+                                    event.target.seekTo(watchProgress[activeVideo.id].currentTime, true);
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    setTimeout(initYT, 500);
+                }
+            };
+            initYT();
+        }
+        return () => {
+            if (ytPlayerRef.current) {
+                ytPlayerRef.current.destroy();
+            }
+        };
+    }, [item.youtubeId, ytContainerId, activeVideo.id, lastTime, watchProgress]);
 
     const resetIdleTimer = useCallback(() => {
         setShowControls(true);
@@ -326,30 +382,6 @@ const VideoPlayer: React.FC<{ item: Content; onClose: () => void }> = ({ item, o
             setLoading(false);
         }
     }, [item]);
-
-    const activeVideo = useMemo(() => {
-        const getUrl = (data: any) => {
-            if (data.audioTracks && data.audioTracks[currentAudio]) {
-                return data.audioTracks[currentAudio];
-            }
-            return data.videoUrl || '';
-        };
-
-        if (item.type === 'movie') return { url: getUrl(item), id: item.id };
-        const ep = episodes[currentEpIndex];
-        return ep ? { url: getUrl(ep), id: `${item.id}_${ep.id}` } : { url: '', id: '' };
-    }, [item, episodes, currentEpIndex, currentAudio]);
-
-    // Detector de links de Uqload para conversión automática a Embed
-    const processedUrl = useMemo(() => {
-        const url = activeVideo.url;
-        if (url.includes('uqload.com') && !url.includes('embed-')) {
-            // Convierte https://uqload.com/xyz a https://uqload.com/embed-xyz.html
-            const idMatch = url.match(/uqload\.com\/([a-zA-Z0-9]+)/);
-            if (idMatch) return `https://uqload.com/embed-${idMatch[1]}.html`;
-        }
-        return url;
-    }, [activeVideo.url]);
 
     const isEmbed = processedUrl.includes('iframe') || processedUrl.includes('uqload.com') || processedUrl.includes('youtube.com') || item.source === 'youtube';
 
@@ -438,7 +470,7 @@ const VideoPlayer: React.FC<{ item: Content; onClose: () => void }> = ({ item, o
     return (
         <div className="fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center animate-fade-in overflow-hidden cursor-none" style={{ cursor: showControls ? 'default' : 'none' }}>
             {/* Cabecera del reproductor */}
-            <div className={`absolute top-0 inset-x-0 h-16 md:h-20 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between px-4 md:px-8 z-10 transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+            <div className={`absolute top-0 inset-x-0 h-16 md:h-20 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between px-4 md:px-8 z-10 transition-all duration-700 ease-in-out ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
                 <div className="flex flex-col min-w-0">
                     <span className="text-red-500 font-bebas text-sm md:text-xl tracking-widest uppercase">Reproduciendo</span>
                     <h2 className="text-white font-bold text-sm md:text-2xl truncate max-w-[150px] sm:max-w-md">
@@ -446,6 +478,32 @@ const VideoPlayer: React.FC<{ item: Content; onClose: () => void }> = ({ item, o
                     </h2>
                 </div>
                 <div className="flex gap-2 md:gap-4">
+                    <button 
+                        onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                        className="bg-white/10 hover:bg-white/20 text-white p-2 md:p-3 rounded-full transition-all relative"
+                        title="Configuración"
+                    >
+                        <svg className="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                        
+                        {isSettingsOpen && (
+                            <div className="absolute top-full right-0 mt-2 w-56 md:w-64 bg-black/95 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl animate-scale-in p-4 z-50">
+                                <h4 className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-3">Ajustes del Reproductor</h4>
+                                <div className="flex items-center justify-between gap-3">
+                                    <span className="text-xs font-bold text-white">Omitir intros automáticamente</span>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            className="sr-only peer"
+                                            checked={autoSkipIntro}
+                                            onChange={(e) => setAutoSkipIntro(e.target.checked)}
+                                        />
+                                        <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                                    </label>
+                                </div>
+                            </div>
+                        )}
+                    </button>
+
                     <button 
                         onClick={handleMarkAsWatched}
                         className="bg-green-600/20 hover:bg-green-600 text-green-500 hover:text-white px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border border-green-600/30 hidden sm:block"
@@ -505,12 +563,7 @@ const VideoPlayer: React.FC<{ item: Content; onClose: () => void }> = ({ item, o
                     </div>
                 ) : youtubeUrl ? (
                     <div className="w-full h-full relative">
-                        <iframe 
-                            src={youtubeUrl} 
-                            className="w-full h-full" 
-                            allow="autoplay; encrypted-media; fullscreen" 
-                            frameBorder="0"
-                        />
+                        <div id={ytContainerId} className="w-full h-full" />
                         {/* Overlay to block YouTube interactions and show custom controls */}
                         <div className="absolute inset-0 pointer-events-none" />
                     </div>
@@ -536,16 +589,33 @@ const VideoPlayer: React.FC<{ item: Content; onClose: () => void }> = ({ item, o
                 {item.type === 'series' && currentEpIndex < episodes.length - 1 && (
                     <button 
                         onClick={handleNext}
-                        className={`absolute bottom-24 md:bottom-32 right-4 md:right-8 bg-white text-black px-4 md:px-6 py-2 md:py-3 rounded-full font-bold flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all shadow-2xl z-20 group ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                        className={`absolute bottom-24 md:bottom-32 right-4 md:right-8 bg-white text-black px-4 md:px-6 py-2 md:py-3 rounded-full font-bold flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all duration-700 ease-in-out shadow-2xl z-20 group ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
                     >
                         <span className="text-xs md:text-sm">SIGUIENTE</span>
                         <NextIcon className="w-4 h-4 md:w-5 md:h-5 group-hover:translate-x-1 transition-transform" />
                     </button>
                 )}
 
+                {/* Botón Omitir Intro */}
+                {showSkipButton && (
+                    <button 
+                        onClick={handleSkipIntro}
+                        className="absolute bottom-24 md:bottom-32 left-4 md:left-8 bg-black/80 text-white px-6 md:px-8 py-3 md:py-4 rounded-lg font-black text-xs md:text-sm tracking-[0.2em] border-2 border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.5)] animate-fade-in hover:scale-105 transition-all z-30 uppercase"
+                    >
+                        Omitir Intro
+                    </button>
+                )}
+
+                {/* Notificación Intro Omitida */}
+                {showSkipNotification && (
+                    <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md text-white px-6 py-2 rounded-full border border-white/10 text-[10px] font-bold tracking-widest uppercase animate-slide-up z-40">
+                        Intro omitida
+                    </div>
+                )}
+
                 {/* Barra de Progreso Manual (Solo para Video Nativo por ahora, YouTube requiere API compleja) */}
                 {!youtubeUrl && !isEmbed && (
-                    <div className={`absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/90 to-transparent transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                    <div className={`absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/90 to-transparent transition-all duration-700 ease-in-out ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
                         <div className="flex items-center gap-4">
                             <span className="text-[10px] font-bold text-gray-400 w-12">{formatTime(currentTime)}</span>
                             <input 
@@ -563,7 +633,7 @@ const VideoPlayer: React.FC<{ item: Content; onClose: () => void }> = ({ item, o
                 
                 {/* Overlay para YouTube que permite ver controles pero bloquea clics directos si se desea */}
                 {youtubeUrl && (
-                    <div className={`absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/90 to-transparent transition-opacity duration-500 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                    <div className={`absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/90 to-transparent transition-all duration-700 ease-in-out ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
                          <div className="flex justify-center">
                             <button 
                                 onClick={handleMarkAsWatched}
@@ -687,18 +757,15 @@ type Filter = 'all' | 'recent' | 'popular' | 'following';
 
 const MainApp: React.FC = () => {
     const { currentProfile, logout, switchProfile, profiles } = useProfile();
-    const { streak } = useStreak();
     const { t } = useLanguage();
-    const { watchProgress, totalWatchTime } = useUserHistory();
+    const { watchProgress } = useUserHistory();
 
-    const currentLevel = useMemo(() => {
-        return [...USER_LEVELS].reverse().find(l => totalWatchTime >= l.minSeconds) || USER_LEVELS[0];
-    }, [totalWatchTime]);
     const [currentPage, setCurrentPage] = useState<Page>('home');
     const [activeFilter, setActiveFilter] = useState<Filter>('all');
     const [contentList, setContentList] = useState<Content[]>(MOCK_CONTENT);
     const [selectedVideo, setSelectedVideo] = useState<Content | null>(null);
     const [isAdminOpen, setIsAdminOpen] = useState(false);
+    const [isUploadFormOpen, setIsUploadFormOpen] = useState(false);
     const [isAdminModeActive, setIsAdminModeActive] = useState(false);
     const [logoClicks, setLogoClicks] = useState(0);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -707,6 +774,13 @@ const MainApp: React.FC = () => {
     const [searchResults, setSearchResults] = useState<Content[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
+    const [autoSkipIntro, setAutoSkipIntro] = useState(() => {
+        return localStorage.getItem('seikotv_auto_skip_intro') === 'true';
+    });
+
+    useEffect(() => {
+        localStorage.setItem('seikotv_auto_skip_intro', autoSkipIntro.toString());
+    }, [autoSkipIntro]);
 
     const triggerFeedback = useCallback(() => {
         const lastShown = localStorage.getItem('seikotv_feedback_last_shown');
@@ -905,20 +979,14 @@ const MainApp: React.FC = () => {
                     >
                         <SearchIcon className="w-6 h-6" />
                     </button>
-                    <div className="flex items-center gap-2 md:gap-3 bg-white/5 border border-white/10 px-2 md:px-4 py-1.5 md:py-2 rounded-full shadow-xl group hover:border-red-600/30 transition-all">
-                        <span className="text-sm md:text-xl">{currentLevel.icon}</span>
-                        <div className="flex flex-col hidden sm:flex">
-                            <span className={`text-[8px] md:text-[10px] font-black uppercase tracking-tighter leading-none ${currentLevel.color}`}>{currentLevel.name}</span>
-                            <span className="text-[8px] md:text-[10px] text-gray-500 font-bold leading-none mt-0.5">{Math.floor(totalWatchTime / 60)} min</span>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-1.5 md:gap-2 bg-red-600/10 border border-red-600/20 px-2 md:px-4 py-1.5 md:py-2 rounded-full shadow-[0_0_15px_rgba(239,68,68,0.1)] group hover:shadow-[0_0_20px_rgba(239,68,68,0.3)] transition-all">
-                        <FireIcon className="w-4 h-4 md:w-5 md:h-5 text-red-500 animate-pulse" />
-                        <div className="flex flex-col">
-                            <span className="text-[8px] md:text-[10px] font-black text-red-500 uppercase tracking-tighter leading-none hidden sm:block">Racha</span>
-                            <span className="text-[10px] md:text-sm font-bold text-white leading-none">{streak}</span>
-                        </div>
-                    </div>
+
+                    <button 
+                        onClick={() => setIsUploadFormOpen(true)}
+                        className="hidden md:flex items-center gap-2 bg-white/5 border border-white/10 px-4 py-2 rounded-full hover:border-red-600/50 transition-all group"
+                    >
+                        <svg className="w-4 h-4 text-gray-400 group-hover:text-red-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 group-hover:text-white transition-colors">Subir</span>
+                    </button>
                     {isAdminModeActive && currentProfile.name === 'Admin' && (
                         <button onClick={() => setIsAdminOpen(true)} className="text-white hover:text-red-500 transition-all">
                             <svg className="w-6 h-6 md:w-7 md:h-7" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c.59-.24 1.13.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.11-.22.06-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
@@ -954,6 +1022,12 @@ const MainApp: React.FC = () => {
                             {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : 'Series'}
                         </button>
                     ))}
+                    <button 
+                        onClick={() => { setIsUploadFormOpen(true); setIsMobileMenuOpen(false); }}
+                        className="text-4xl font-bebas tracking-[0.2em] text-gray-400 hover:text-red-500 transition-all uppercase"
+                    >
+                        Subir
+                    </button>
                     <button onClick={() => setIsMobileMenuOpen(false)} className="mt-12 text-gray-500 uppercase font-bold tracking-widest text-sm">Cerrar</button>
                 </div>
             </div>
@@ -1048,8 +1122,16 @@ const MainApp: React.FC = () => {
                 </div>
             </main>
 
-            {selectedVideo && <VideoPlayer item={selectedVideo} onClose={() => setSelectedVideo(null)} />}
+            {selectedVideo && (
+                <VideoPlayer 
+                    item={selectedVideo} 
+                    onClose={() => setSelectedVideo(null)} 
+                    autoSkipIntro={autoSkipIntro}
+                    setAutoSkipIntro={setAutoSkipIntro}
+                />
+            )}
             {isAdminOpen && <AdminPanel onClose={() => setIsAdminOpen(false)} />}
+            {isUploadFormOpen && <ContentUploadForm onClose={() => setIsUploadFormOpen(false)} />}
             {showFeedback && currentProfile && <FeedbackToast userId={currentProfile.id} onClose={() => setShowFeedback(false)} />}
         </div>
     );
@@ -1057,13 +1139,11 @@ const MainApp: React.FC = () => {
 
 const App: React.FC = () => (
     <ProfileProvider>
-        <StreakProvider>
-            <LanguageProvider>
-                <UserHistoryProvider>
-                    <MainApp />
-                </UserHistoryProvider>
-            </LanguageProvider>
-        </StreakProvider>
+        <LanguageProvider>
+            <UserHistoryProvider>
+                <MainApp />
+            </UserHistoryProvider>
+        </LanguageProvider>
     </ProfileProvider>
 );
 

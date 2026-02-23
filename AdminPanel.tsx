@@ -1,11 +1,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from './firebaseConfig';
-import { collection, addDoc, serverTimestamp, getDocs, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+import { collection, addDoc, serverTimestamp, getDocs, query, where, orderBy } from "firebase/firestore";
 import { Content } from './types';
+import { LANGUAGES } from './constants';
 
 const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [type, setType] = useState<'movie' | 'series' | 'episode'>('movie');
     const [seriesList, setSeriesList] = useState<Content[]>([]);
     const [selectedSeriesId, setSelectedSeriesId] = useState('');
@@ -16,17 +18,18 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         thumbnailUrl: '',
         backdropUrl: '',
         videoUrl: '', // URL principal (fallback)
-        audioTracks: {
-            es: '',
-            en: ''
-        },
+        audioTracks: [
+            { lang: 'es', url: '' },
+            { lang: 'en', url: '' }
+        ],
         genre: '',
         rating: 'PG-13',
         releaseYear: new Date().getFullYear(),
         featured: false,
         // Episode specific
         episodeNumber: 1,
-        duration: '24m'
+        duration: '24m',
+        skipIntro: 0
     });
 
     useEffect(() => {
@@ -43,11 +46,18 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
+        setError(null);
 
         try {
+            if (!formData.title.trim()) throw new Error("El título es obligatorio.");
+            if (!formData.thumbnailUrl.trim()) throw new Error("La miniatura es obligatoria.");
+            
             const filteredTracks: Record<string, string> = {};
-            if (formData.audioTracks.es) filteredTracks.es = formData.audioTracks.es;
-            if (formData.audioTracks.en) filteredTracks.en = formData.audioTracks.en;
+            formData.audioTracks.forEach(track => {
+                if (track.lang && track.url) {
+                    filteredTracks[track.lang] = track.url;
+                }
+            });
 
             if (type === 'episode') {
                 if (!selectedSeriesId) throw new Error("Debes seleccionar una serie");
@@ -61,6 +71,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     audioTracks: filteredTracks,
                     episodeNumber: Number(formData.episodeNumber),
                     duration: formData.duration,
+                    skipIntro: Number(formData.skipIntro),
                     createdAt: serverTimestamp()
                 });
                 alert("¡Episodio añadido con éxito! 🎬");
@@ -78,15 +89,26 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     releaseYear: Number(formData.releaseYear),
                     rating: formData.rating,
                     featured: formData.featured,
+                    skipIntro: Number(formData.skipIntro),
                     createdAt: serverTimestamp(),
                 };
                 await addDoc(contentRef, newContent);
                 alert(type === 'series' ? "¡Serie creada! 🎉" : "¡Película subida! 🎉");
             }
             onClose();
-        } catch (error: any) {
-            console.error("Error adding document: ", error);
-            alert("Error: " + error.message);
+        } catch (err: any) {
+            console.error("Error adding document: ", err);
+            let message = "Ocurrió un error inesperado al guardar en la base de datos.";
+            
+            if (err.code === 'permission-denied') {
+                message = "No tienes permisos suficientes para realizar esta acción.";
+            } else if (err.code === 'unavailable') {
+                message = "La base de datos no está disponible. Revisa tu conexión.";
+            } else if (err.message) {
+                message = err.message;
+            }
+            
+            setError(message);
         } finally {
             setLoading(false);
         }
@@ -106,7 +128,10 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             <button 
                                 key={t}
                                 type="button"
-                                onClick={() => setType(t as any)}
+                                onClick={() => {
+                                    setType(t as any);
+                                    setError(null);
+                                }}
                                 className={`flex-1 py-2 md:py-3 rounded-lg md:rounded-xl font-bold transition-all text-[8px] md:text-[10px] tracking-widest uppercase ${type === t ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
                             >
                                 {t === 'movie' ? 'Película' : t === 'series' ? 'Serie' : 'Episodio'}
@@ -236,25 +261,57 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                         required={type === 'episode'}
                                     />
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="flex flex-col gap-2">
-                                        <label className="text-[10px] text-blue-400 uppercase font-black tracking-widest">URL Audio: Español Latino</label>
-                                        <input 
-                                            className="w-full bg-white/5 border border-blue-400/30 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-blue-400 outline-none transition-all text-xs"
-                                            value={formData.audioTracks.es}
-                                            onChange={e => setFormData({...formData, audioTracks: {...formData.audioTracks, es: e.target.value}})}
-                                            placeholder="URL de video con audio ES"
-                                        />
-                                    </div>
-                                    <div className="flex flex-col gap-2">
-                                        <label className="text-[10px] text-purple-400 uppercase font-black tracking-widest">URL Audio: Inglés</label>
-                                        <input 
-                                            className="w-full bg-white/5 border border-purple-400/30 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-purple-400 outline-none transition-all text-xs"
-                                            value={formData.audioTracks.en}
-                                            onChange={e => setFormData({...formData, audioTracks: {...formData.audioTracks, en: e.target.value}})}
-                                            placeholder="URL de video con audio EN"
-                                        />
-                                    </div>
+                                <div className="space-y-3">
+                                    <label className="text-[10px] text-blue-400 uppercase font-black tracking-widest flex justify-between items-center">
+                                        Pistas de Audio
+                                        <button 
+                                            type="button"
+                                            onClick={() => setFormData({...formData, audioTracks: [...formData.audioTracks, { lang: 'en', url: '' }]})}
+                                            className="text-blue-400 hover:text-blue-300 text-[8px] border border-blue-400/30 px-2 py-1 rounded"
+                                        >
+                                            + Añadir Idioma
+                                        </button>
+                                    </label>
+                                    
+                                    {formData.audioTracks.map((track, index) => (
+                                        <div key={index} className="flex gap-2 animate-fade-in">
+                                            <select 
+                                                className="bg-white/5 border border-white/10 p-2 rounded-lg text-white text-xs outline-none focus:border-blue-400 w-32"
+                                                value={track.lang}
+                                                onChange={e => {
+                                                    const newTracks = [...formData.audioTracks];
+                                                    newTracks[index].lang = e.target.value;
+                                                    setFormData({...formData, audioTracks: newTracks});
+                                                }}
+                                            >
+                                                {LANGUAGES.map(l => (
+                                                    <option key={l.code} value={l.code} className="bg-[#121212]">{l.name}</option>
+                                                ))}
+                                            </select>
+                                            <input 
+                                                className="flex-grow bg-white/5 border border-white/10 p-2 rounded-lg text-white focus:border-blue-400 outline-none transition-all text-xs"
+                                                value={track.url}
+                                                onChange={e => {
+                                                    const newTracks = [...formData.audioTracks];
+                                                    newTracks[index].url = e.target.value;
+                                                    setFormData({...formData, audioTracks: newTracks});
+                                                }}
+                                                placeholder="URL del video con este audio"
+                                            />
+                                            {formData.audioTracks.length > 1 && (
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const newTracks = formData.audioTracks.filter((_, i) => i !== index);
+                                                        setFormData({...formData, audioTracks: newTracks});
+                                                    }}
+                                                    className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                >
+                                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
@@ -267,6 +324,31 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         )}
                     </div>
 
+                    <div className="flex flex-col gap-2 pt-4 border-t border-white/5">
+                        <label className="text-[10px] text-yellow-500 uppercase font-black tracking-widest flex justify-between items-center">
+                            Final de Intro (Segundos)
+                            <span className="text-[8px] text-gray-500 normal-case font-normal">Marca el segundo exacto donde termina la intro</span>
+                        </label>
+                        <div className="flex gap-2">
+                            <input 
+                                type="number"
+                                className="flex-grow bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-yellow-500 outline-none transition-all text-sm"
+                                value={formData.skipIntro}
+                                onChange={e => setFormData({...formData, skipIntro: parseInt(e.target.value) || 0})}
+                            />
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    const currentTime = (window as any).seikotv_current_time || 0;
+                                    setFormData({...formData, skipIntro: Math.floor(currentTime)});
+                                }}
+                                className="bg-yellow-600/20 hover:bg-yellow-600 text-yellow-500 hover:text-white px-4 rounded-lg md:rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border border-yellow-600/30 whitespace-nowrap"
+                            >
+                                Marcar aquí
+                            </button>
+                        </div>
+                    </div>
+
                     {type !== 'episode' && (
                         <div className="flex items-center gap-3 pt-4">
                             <input 
@@ -277,6 +359,14 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 onChange={e => setFormData({...formData, featured: e.target.checked})}
                             />
                             <label htmlFor="featured" className="text-gray-300 font-bold text-sm cursor-pointer">Destacar en la pantalla de inicio</label>
+                        </div>
+                    )}
+
+                    {error && (
+                        <div className="p-4 bg-red-600/20 border border-red-600/50 rounded-xl animate-shake">
+                            <p className="text-xs text-red-500 font-bold flex items-center gap-2">
+                                ⚠️ {error}
+                            </p>
                         </div>
                     )}
 

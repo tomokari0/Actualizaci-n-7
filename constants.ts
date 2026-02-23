@@ -558,12 +558,6 @@ export const AUDIO_TRACKS = [
     { code: 'en', name: 'Inglés' }
 ];
 
-export const USER_LEVELS = [
-    { id: 'novato', name: 'Novato', minSeconds: 0, color: 'text-gray-400', icon: '🌱' },
-    { id: 'fan', name: 'Seiko-Fan', minSeconds: 3600, color: 'text-blue-400', icon: '⭐' },
-    { id: 'leyenda', name: 'Leyenda', minSeconds: 36000, color: 'text-yellow-400', icon: '👑' }
-];
-
 export const LANGUAGES = [
     { code: 'en', name: 'English' },
     { code: 'es-419', name: 'Spanish (Latin America)' },
