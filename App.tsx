@@ -179,6 +179,7 @@ const VideoPlayer: React.FC<{
     const [duration, setDuration] = useState(0);
     const [showSkipButton, setShowSkipButton] = useState(false);
     const [showSkipNotification, setShowSkipNotification] = useState(false);
+    const hasAutoSkippedRef = useRef<string | null>(null);
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const activeVideo = useMemo(() => {
@@ -213,16 +214,23 @@ const VideoPlayer: React.FC<{
 
     const handleSkipIntro = useCallback(() => {
         if (skipIntroTime > 0) {
+            let skipped = false;
             if (videoRef.current) {
                 videoRef.current.currentTime = skipIntroTime;
+                skipped = true;
             } else if (ytPlayerRef.current && ytPlayerRef.current.seekTo) {
                 ytPlayerRef.current.seekTo(skipIntroTime, true);
+                skipped = true;
             }
-            setShowSkipButton(false);
-            setShowSkipNotification(true);
-            setTimeout(() => setShowSkipNotification(false), 3000);
+            
+            if (skipped) {
+                setShowSkipButton(false);
+                setShowSkipNotification(true);
+                setTimeout(() => setShowSkipNotification(false), 3000);
+                hasAutoSkippedRef.current = activeVideo.id;
+            }
         }
-    }, [skipIntroTime]);
+    }, [skipIntroTime, activeVideo.id]);
 
     // Monitor de tiempo y skip automático
     useEffect(() => {
@@ -244,10 +252,10 @@ const VideoPlayer: React.FC<{
                 (window as any).seikotv_current_time = current;
 
                 // Lógica de botón Skip Intro
-                if (skipIntroTime > 0 && current >= 5 && current < skipIntroTime) {
-                    if (autoSkipIntro) {
+                if (skipIntroTime > 0 && current >= 2 && current < skipIntroTime) {
+                    if (autoSkipIntro && hasAutoSkippedRef.current !== activeVideo.id) {
                         handleSkipIntro();
-                    } else {
+                    } else if (!autoSkipIntro) {
                         setShowSkipButton(true);
                     }
                 } else {
