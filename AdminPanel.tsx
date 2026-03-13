@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from './firebaseConfig';
-import { collection, addDoc, serverTimestamp, getDocs, query, where, orderBy } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, getDocs, query, where } from "firebase/firestore";
 import { Content } from './types';
 import { LANGUAGES } from './constants';
+import Uploader from './Uploader';
 
 const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [loading, setLoading] = useState(false);
@@ -26,6 +27,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         rating: 'PG-13',
         releaseYear: new Date().getFullYear(),
         featured: false,
+        status: 'ongoing', // Default status
         // Episode specific
         episodeNumber: 1,
         duration: '24m',
@@ -89,6 +91,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     releaseYear: Number(formData.releaseYear),
                     rating: formData.rating,
                     featured: formData.featured,
+                    status: formData.status,
                     skipIntro: Number(formData.skipIntro),
                     createdAt: serverTimestamp(),
                 };
@@ -204,14 +207,28 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     </div>
 
                     {type !== 'episode' && (
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Géneros (Separados por coma)</label>
-                            <input 
-                                className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
-                                value={formData.genre}
-                                onChange={e => setFormData({...formData, genre: e.target.value})}
-                                required={type !== 'episode'}
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Géneros (Separados por coma)</label>
+                                <input 
+                                    className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
+                                    value={formData.genre}
+                                    onChange={e => setFormData({...formData, genre: e.target.value})}
+                                    required
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Estado</label>
+                                <select
+                                    className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white outline-none focus:border-red-600 text-sm"
+                                    value={formData.status}
+                                    onChange={e => setFormData({...formData, status: e.target.value})}
+                                >
+                                    <option value="ongoing" className="bg-[#121212]">En emisión</option>
+                                    <option value="completed" className="bg-[#121212]">Terminado</option>
+                                    <option value="cancelled" className="bg-[#121212]">Cancelado</option>
+                                </select>
+                            </div>
                         </div>
                     )}
 
@@ -219,22 +236,28 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="flex flex-col gap-2">
                                 <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">URL Miniatura</label>
-                                <input 
-                                    className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs"
-                                    value={formData.thumbnailUrl}
-                                    onChange={e => setFormData({...formData, thumbnailUrl: e.target.value})}
-                                    required
-                                />
+                                <div className="flex gap-2">
+                                    <input 
+                                        className="flex-grow bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs"
+                                        value={formData.thumbnailUrl}
+                                        onChange={e => setFormData({...formData, thumbnailUrl: e.target.value})}
+                                        required
+                                    />
+                                    <Uploader onUploadSuccess={(url) => setFormData({...formData, thumbnailUrl: url})} />
+                                </div>
                             </div>
                             {type !== 'episode' ? (
                                 <div className="flex flex-col gap-2">
                                     <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">URL Fondo (Hero)</label>
-                                    <input 
-                                        className="w-full bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs"
-                                        value={formData.backdropUrl}
-                                        onChange={e => setFormData({...formData, backdropUrl: e.target.value})}
-                                        required={type !== 'episode'}
-                                    />
+                                    <div className="flex gap-2">
+                                        <input 
+                                            className="flex-grow bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs"
+                                            value={formData.backdropUrl}
+                                            onChange={e => setFormData({...formData, backdropUrl: e.target.value})}
+                                            required
+                                        />
+                                        <Uploader onUploadSuccess={(url) => setFormData({...formData, backdropUrl: url})} />
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="flex flex-col gap-2">

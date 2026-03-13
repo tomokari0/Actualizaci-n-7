@@ -57,6 +57,7 @@ export interface Content {
  
   // Series specific
   seasons?: Season[];
+  status?: 'ongoing' | 'completed' | 'cancelled';
 
   trailerUrl?: string;
   

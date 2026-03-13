@@ -672,6 +672,29 @@ const VideoPlayer: React.FC<{
     );
 };
 
+// --- STATUS BADGE COMPONENT ---
+const StatusBadge: React.FC<{ status?: 'ongoing' | 'completed' | 'cancelled' }> = ({ status }) => {
+    if (!status) return null;
+
+    const styles = {
+        ongoing: "bg-[#39ff14]/80 text-black border-[#39ff14]", // Neon green
+        completed: "bg-blue-900/80 text-white border-blue-500", // Dark blue
+        cancelled: "bg-red-600/80 text-white border-red-500" // Red
+    };
+
+    const labels = {
+        ongoing: "En emisión",
+        completed: "Terminado",
+        cancelled: "Cancelado"
+    };
+
+    return (
+        <div className={`absolute top-2 left-2 z-20 px-2 py-0.5 rounded-md text-[8px] md:text-[10px] font-black uppercase tracking-widest border backdrop-blur-sm shadow-lg ${styles[status]}`}>
+            {labels[status]}
+        </div>
+    );
+};
+
 // --- COMPONENTE DE TARJETA DE CONTENIDO ---
 /**
  * FIX: Added missing ContentCard component to fix compilation error.
@@ -687,6 +710,7 @@ const ContentCard: React.FC<{
             onClick={onPlay}
             className="group relative aspect-[2/3] bg-gray-900 rounded-lg md:rounded-xl overflow-hidden cursor-pointer transition-all duration-500 md:hover:scale-110 md:hover:z-10 shadow-xl border border-white/5 md:hover:border-red-600/50"
         >
+            <StatusBadge status={item.status} />
             <img 
                 src={item.thumbnailUrl} 
                 alt={item.title}
@@ -731,7 +755,7 @@ const ContentCard: React.FC<{
 
 // --- COMPONENTE PRINCIPAL ---
 type Page = 'home' | 'movies' | 'series';
-type Filter = 'all' | 'recent' | 'popular' | 'following';
+type Filter = 'all' | 'recent' | 'popular' | 'following' | 'ongoing';
 
 const MainApp: React.FC = () => {
     const { profile: currentProfile, isAdmin, loading } = useAuth();
@@ -885,6 +909,8 @@ const MainApp: React.FC = () => {
                 const progressKey = item.type === 'movie' ? item.id : `${item.id}_${item.seasons?.[0]?.episodes?.[0]?.id || ''}`;
                 return watchProgress[progressKey] !== undefined;
             });
+        } else if (activeFilter === 'ongoing') {
+            list = list.filter(item => item.status === 'ongoing');
         }
 
         return list;
@@ -1073,7 +1099,8 @@ const MainApp: React.FC = () => {
                                 { id: 'all', label: 'Todos' },
                                 { id: 'recent', label: 'Recientes' },
                                 { id: 'popular', label: 'Más vistos' },
-                                { id: 'following', label: 'Siguiendo' }
+                                { id: 'following', label: 'Siguiendo' },
+                                { id: 'ongoing', label: 'En emisión' }
                             ].map(filter => (
                                 <button
                                     key={filter.id}

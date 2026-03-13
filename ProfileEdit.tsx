@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { useAuth } from './AuthContext';
-import { db, storage } from './firebaseConfig';
+import { db } from './firebaseConfig';
 import { doc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import Uploader from './Uploader';
 
 const ProfileEdit: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const { profile } = useAuth();
@@ -12,30 +12,15 @@ const ProfileEdit: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [uploading, setUploading] = useState(false);
     const [preview, setPreview] = useState<string | null>(profile?.avatar || null);
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !profile) return;
-
-        setUploading(true);
+    const handleUploadSuccess = async (url: string) => {
+        if (!profile) return;
+        setPreview(url);
         try {
-            // Create preview
-            const reader = new FileReader();
-            reader.onloadend = () => setPreview(reader.result as string);
-            reader.readAsDataURL(file);
-
-            // Upload to Storage
-            const storageRef = ref(storage, `avatars/${profile.id}`);
-            await uploadBytes(storageRef, file);
-            const downloadURL = await getDownloadURL(storageRef);
-            
-            // Update Firestore immediately
             const profileRef = doc(db, "usuarios", profile.id);
-            await updateDoc(profileRef, { avatar: downloadURL });
+            await updateDoc(profileRef, { avatar: url });
         } catch (err) {
-            console.error("Error uploading avatar:", err);
-            alert("Error al subir la imagen");
-        } finally {
-            setUploading(false);
+            console.error("Error updating profile avatar:", err);
+            alert("Error al actualizar el avatar");
         }
     };
 
@@ -67,22 +52,14 @@ const ProfileEdit: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 </div>
 
                 <div className="flex flex-col items-center mb-8">
-                    <div className="relative group cursor-pointer">
+                    <div className="relative group mb-4">
                         <img 
                             src={preview || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png'} 
                             alt="Avatar" 
                             className={`w-32 h-32 rounded-full object-cover border-4 border-red-600/20 group-hover:border-red-600 transition-all ${uploading ? 'opacity-50' : ''}`}
                         />
-                        <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 rounded-full transition-opacity cursor-pointer">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-white">Cambiar</span>
-                            <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} disabled={uploading} />
-                        </label>
-                        {uploading && (
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-8 h-8 border-4 border-red-600 border-t-transparent rounded-full animate-spin"></div>
-                            </div>
-                        )}
                     </div>
+                    <Uploader onUploadSuccess={handleUploadSuccess} />
                     <p className="text-[10px] text-gray-500 mt-4 uppercase font-black tracking-widest">Foto de Perfil</p>
                 </div>
 
