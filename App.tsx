@@ -2,13 +2,20 @@
 import React, { useState, useEffect, useRef, createContext, useContext, useMemo, useCallback } from 'react';
 import { Content, Episode, Season, UserProfile } from './types';
 import { LANGUAGES, TRANSLATIONS, MOCK_CONTENT } from './constants';
-import { db, isConfigured } from './firebaseConfig';
-import { collection, onSnapshot, query, orderBy, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { db, isConfigured, rtdb, auth } from './firebaseConfig';
+import { collection, onSnapshot, query, orderBy, getDocs, addDoc, serverTimestamp as firestoreTimestamp } from "firebase/firestore";
+import { ref, onValue, set, serverTimestamp as rtdbTimestamp } from "firebase/database";
 import AdminPanel from './AdminPanel';
 import ContentUploadForm from './ContentUploadForm';
 import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
 import ProfileEdit from './ProfileEdit';
+import WeatherWidget from './WeatherWidget';
+import WatchPartyChat from './WatchPartyChat';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import LazyPoster from './src/components/LazyPoster';
+import ShakaPlayer from './src/components/ShakaPlayer';
+import useRamCleaner from './src/hooks/useRamCleaner';
 
 declare global {
   interface Window {
@@ -103,7 +110,7 @@ const FeedbackToast: React.FC<{
             await addDoc(collection(db, "feedback"), {
                 userId,
                 rating: val,
-                timestamp: serverTimestamp(),
+                timestamp: firestoreTimestamp(),
                 date: new Date().toISOString()
             });
             setSubmitted(true);
@@ -166,6 +173,8 @@ const VideoPlayer: React.FC<{
     const ytContainerId = useMemo(() => `yt-player-${Math.random().toString(36).substr(2, 9)}`, []);
     
     const { updateProgress, watchProgress } = useUserHistory();
+    const [seasons, setSeasons] = useState<Season[]>([]);
+    const [selectedSeasonId, setSelectedSeasonId] = useState<string>('');
     const [episodes, setEpisodes] = useState<Episode[]>([]);
     const [currentEpIndex, setCurrentEpIndex] = useState(0);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -179,8 +188,22 @@ const VideoPlayer: React.FC<{
     const [duration, setDuration] = useState(0);
     const [showSkipButton, setShowSkipButton] = useState(false);
     const [showSkipNotification, setShowSkipNotification] = useState(false);
+    const [isWatchPartyActive, setIsWatchPartyActive] = useState(false);
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const user = auth.currentUser;
+    const isAdmin = user?.email === 'tomokari07@gmail.com';
     const hasAutoSkippedRef = useRef<string | null>(null);
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+    
+    // Reset state when item changes
+    useEffect(() => {
+        setCurrentEpIndex(0);
+        setLastTime(0);
+        setEpisodes([]);
+        setSeasons([]);
+        setSelectedSeasonId('');
+        setLoading(true);
+    }, [item.id]);
 
     const activeVideo = useMemo(() => {
         const getUrl = (data: any) => {
@@ -195,14 +218,28 @@ const VideoPlayer: React.FC<{
         return ep ? { url: getUrl(ep), id: `${item.id}_${ep.id}` } : { url: '', id: '' };
     }, [item, episodes, currentEpIndex, currentAudio]);
 
-    // Detector de links de Uqload para conversión automática a Embed
+    // Detector de links de Uqload y YouTube para conversión automática a Embed
     const processedUrl = useMemo(() => {
-        const url = activeVideo.url;
+        let url = activeVideo.url;
+        if (!url) return '';
+
+        // Uqload
         if (url.includes('uqload.com') && !url.includes('embed-')) {
-            // Convierte https://uqload.com/xyz a https://uqload.com/embed-xyz.html
             const idMatch = url.match(/uqload\.com\/([a-zA-Z0-9]+)/);
             if (idMatch) return `https://uqload.com/embed-${idMatch[1]}.html`;
         }
+        
+        // YouTube
+        if (url.includes('youtube.com/watch?v=') || url.includes('youtu.be/')) {
+            let id = '';
+            if (url.includes('youtube.com/watch?v=')) {
+                id = url.split('v=')[1].split('&')[0];
+            } else if (url.includes('youtu.be/')) {
+                id = url.split('youtu.be/')[1].split('?')[0];
+            }
+            if (id) return `https://www.youtube.com/embed/${id}?autoplay=1&modestbranding=1&rel=0&showinfo=0&controls=0&enablejsapi=1`;
+        }
+
         return url;
     }, [activeVideo.url]);
 
@@ -267,13 +304,119 @@ const VideoPlayer: React.FC<{
         return () => clearInterval(interval);
     }, [skipIntroTime, autoSkipIntro, handleSkipIntro]);
 
+    const youtubeId = useMemo(() => {
+        if (item.source === 'youtube' && item.youtubeId) return item.youtubeId;
+        
+        const url = activeVideo.url;
+        if (!url) return null;
+        
+        if (url.includes('youtube.com/watch?v=')) {
+            return url.split('v=')[1].split('&')[0];
+        } else if (url.includes('youtu.be/')) {
+            return url.split('youtu.be/')[1].split('?')[0];
+        }
+        return null;
+    }, [item, activeVideo.url]);
+
+    const updateFirebase = useCallback(() => {
+        if (!isAdmin || !isWatchPartyActive) return;
+        const roomRef = ref(rtdb, 'rooms/salaPrincipal');
+        
+        let current = 0;
+        let state = 2; // paused
+
+        if (videoRef.current) {
+            current = videoRef.current.currentTime;
+            state = videoRef.current.paused ? 2 : 1;
+        } else if (ytPlayerRef.current && ytPlayerRef.current.getCurrentTime) {
+            try {
+                current = ytPlayerRef.current.getCurrentTime();
+                state = ytPlayerRef.current.getPlayerState();
+            } catch (e) {
+                return;
+            }
+        }
+
+        set(roomRef, {
+            currentTime: current,
+            playerState: state,
+            lastUpdate: rtdbTimestamp(),
+            contentId: item.id,
+            episodeIndex: currentEpIndex
+        });
+    }, [isAdmin, isWatchPartyActive, item.id, currentEpIndex]);
+
+    // --- LÓGICA DE WATCH PARTY ---
+    useEffect(() => {
+        if (!isWatchPartyActive) return;
+
+        const roomRef = ref(rtdb, 'rooms/salaPrincipal');
+
+        if (isAdmin) {
+            const interval = setInterval(updateFirebase, 2000);
+            
+            const v = videoRef.current;
+            if (v) {
+                v.addEventListener('play', updateFirebase);
+                v.addEventListener('pause', updateFirebase);
+                v.addEventListener('seeked', updateFirebase);
+            }
+
+            return () => {
+                clearInterval(interval);
+                if (v) {
+                    v.removeEventListener('play', updateFirebase);
+                    v.removeEventListener('pause', updateFirebase);
+                    v.removeEventListener('seeked', updateFirebase);
+                }
+            };
+        } else {
+            const unsubscribe = onValue(roomRef, (snapshot) => {
+                const data = snapshot.val();
+                if (!data) return;
+
+                if (data.contentId !== item.id) return;
+                
+                // Sync episode if different
+                if (data.episodeIndex !== undefined && data.episodeIndex !== currentEpIndex) {
+                    setCurrentEpIndex(data.episodeIndex);
+                }
+
+                const remoteTime = data.currentTime;
+                const remoteState = data.playerState;
+
+                if (videoRef.current) {
+                    const localTime = videoRef.current.currentTime;
+                    if (remoteState === 1 && videoRef.current.paused) videoRef.current.play().catch(() => {});
+                    if (remoteState === 2 && !videoRef.current.paused) videoRef.current.pause();
+                    if (Math.abs(localTime - remoteTime) > 2) {
+                        videoRef.current.currentTime = remoteTime;
+                    }
+                } else if (ytPlayerRef.current && ytPlayerRef.current.getCurrentTime) {
+                    try {
+                        const localTime = ytPlayerRef.current.getCurrentTime();
+                        const localState = ytPlayerRef.current.getPlayerState();
+                        if (remoteState === 1 && localState !== 1) ytPlayerRef.current.playVideo();
+                        if (remoteState === 2 && localState !== 2) ytPlayerRef.current.pauseVideo();
+                        if (Math.abs(localTime - remoteTime) > 2) {
+                            ytPlayerRef.current.seekTo(remoteTime, true);
+                        }
+                    } catch (e) {
+                        // Player might not be ready
+                    }
+                }
+            });
+            return () => unsubscribe();
+        }
+    }, [isWatchPartyActive, isAdmin, item.id, currentEpIndex, updateFirebase]);
+
     // Inicialización de YouTube Player
     useEffect(() => {
-        if (item.source === 'youtube' && item.youtubeId) {
+        if (youtubeId) {
             const initYT = () => {
                 if ((window as any).YT && (window as any).YT.Player) {
                     ytPlayerRef.current = new (window as any).YT.Player(ytContainerId, {
-                        videoId: item.youtubeId,
+                        videoId: youtubeId,
                         playerVars: {
                             autoplay: 1,
                             controls: 0,
@@ -290,6 +433,11 @@ const VideoPlayer: React.FC<{
                                 } else if (watchProgress[activeVideo.id]) {
                                     event.target.seekTo(watchProgress[activeVideo.id].currentTime, true);
                                 }
+                            },
+                            onStateChange: (event: any) => {
+                                if (isAdmin && isWatchPartyActive) {
+                                    updateFirebase();
+                                }
                             }
                         }
                     });
@@ -302,9 +450,10 @@ const VideoPlayer: React.FC<{
         return () => {
             if (ytPlayerRef.current) {
                 ytPlayerRef.current.destroy();
+                ytPlayerRef.current = null;
             }
         };
-    }, [item.youtubeId, ytContainerId, activeVideo.id, lastTime, watchProgress]);
+    }, [youtubeId, ytContainerId, activeVideo.id, lastTime, watchProgress]);
 
     const resetIdleTimer = useCallback(() => {
         setShowControls(true);
@@ -326,14 +475,51 @@ const VideoPlayer: React.FC<{
         };
     }, [resetIdleTimer]);
 
-    // 1. Lógica de Firebase: Consultar sub-colección de episodios
+    // 1. Lógica de Firebase: Consultar Temporadas
     useEffect(() => {
         if (item.type === 'series') {
+            const fetchSeasons = async () => {
+                try {
+                    const seasonsRef = collection(db, "content", item.id, "temporadas");
+                    const q = query(seasonsRef, orderBy("seasonNumber", "asc"));
+                    const querySnapshot = await getDocs(q);
+                    
+                    const seasonsData = querySnapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    } as Season));
+
+                    setSeasons(seasonsData);
+
+                    if (seasonsData.length > 0) {
+                        // Recuperar última temporada vista de localStorage
+                        const lastSeasonId = localStorage.getItem(`seikotv_last_season_${item.id}`);
+                        const found = seasonsData.find(s => s.id === lastSeasonId);
+                        setSelectedSeasonId(found ? found.id : seasonsData[0].id);
+                    } else if (item.seasons) {
+                        // Fallback a mock data
+                        setSeasons(item.seasons);
+                        setSelectedSeasonId(item.seasons[0]?.id || '');
+                    }
+                } catch (error) {
+                    console.error("Error fetching seasons:", error);
+                    if (item.seasons) {
+                        setSeasons(item.seasons);
+                        setSelectedSeasonId(item.seasons[0]?.id || '');
+                    }
+                }
+            };
+            fetchSeasons();
+        }
+    }, [item.id, item.seasons]);
+
+    // 2. Lógica de Firebase: Consultar episodios de la temporada seleccionada
+    useEffect(() => {
+        if (item.type === 'series' && selectedSeasonId) {
             const fetchEpisodes = async () => {
                 setLoading(true);
                 try {
-                    // Consultamos la sub-colección "episodes" del documento de la serie
-                    const episodesRef = collection(db, "content", item.id, "episodes");
+                    const episodesRef = collection(db, "content", item.id, "temporadas", selectedSeasonId, "episodios");
                     const q = query(episodesRef, orderBy("episodeNumber", "asc"));
                     const querySnapshot = await getDocs(q);
                     
@@ -344,31 +530,38 @@ const VideoPlayer: React.FC<{
 
                     if (episodesData.length > 0) {
                         setEpisodes(episodesData);
-                    } else if (item.seasons?.[0]?.episodes) {
+                    } else {
                         // Fallback a mock data si no hay en Firebase
-                        setEpisodes(item.seasons[0].episodes);
+                        const currentSeason = seasons.find(s => s.id === selectedSeasonId);
+                        if (currentSeason?.episodes) {
+                            setEpisodes(currentSeason.episodes);
+                        }
                     }
+                    
+                    // Guardar en localStorage
+                    localStorage.setItem(`seikotv_last_season_${item.id}`, selectedSeasonId);
                 } catch (error) {
                     console.error("Error fetching episodes:", error);
-                    if (item.seasons?.[0]?.episodes) setEpisodes(item.seasons[0].episodes);
+                    const currentSeason = seasons.find(s => s.id === selectedSeasonId);
+                    if (currentSeason?.episodes) setEpisodes(currentSeason.episodes);
                 } finally {
                     setLoading(false);
                 }
             };
             fetchEpisodes();
-        } else {
+        } else if (item.type !== 'series') {
             setLoading(false);
         }
-    }, [item]);
+    }, [item.id, selectedSeasonId, seasons, item.type]);
 
-    const isEmbed = processedUrl.includes('iframe') || processedUrl.includes('uqload.com') || processedUrl.includes('youtube.com') || item.source === 'youtube';
+    const isEmbed = processedUrl.includes('iframe') || processedUrl.includes('uqload.com') || (processedUrl.includes('youtube.com') && !youtubeId);
 
     const youtubeUrl = useMemo(() => {
-        if (item.source === 'youtube' && item.youtubeId) {
-            return `https://www.youtube.com/embed/${item.youtubeId}?autoplay=1&modestbranding=1&rel=0&showinfo=0&controls=0&enablejsapi=1`;
+        if (youtubeId) {
+            return `https://www.youtube.com/embed/${youtubeId}?autoplay=1&modestbranding=1&rel=0&showinfo=0&controls=0&enablejsapi=1`;
         }
         return null;
-    }, [item]);
+    }, [youtubeId]);
 
     useEffect(() => {
         const v = videoRef.current;
@@ -446,8 +639,9 @@ const VideoPlayer: React.FC<{
     }, [item, episodes, currentEpIndex]);
 
     return (
-        <div className="fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center animate-fade-in overflow-hidden cursor-none" style={{ cursor: showControls ? 'default' : 'none' }}>
-            {/* Cabecera del reproductor */}
+        <div className="fixed inset-0 bg-black z-[200] flex flex-row animate-fade-in overflow-hidden">
+            <div className="flex-grow relative flex flex-col items-center justify-center cursor-none" style={{ cursor: showControls ? 'default' : 'none' }}>
+                {/* Cabecera del reproductor */}
             <div className={`absolute top-0 inset-x-0 h-16 md:h-20 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between px-4 md:px-8 z-10 transition-all duration-700 ease-in-out ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
                 <div className="flex flex-col min-w-0">
                     <span className="text-red-500 font-bebas text-sm md:text-xl tracking-widest uppercase">Reproduciendo</span>
@@ -456,6 +650,27 @@ const VideoPlayer: React.FC<{
                     </h2>
                 </div>
                 <div className="flex gap-2 md:gap-4">
+                    <button 
+                        onClick={() => setIsWatchPartyActive(!isWatchPartyActive)}
+                        className={`p-2 md:p-3 rounded-full transition-all flex items-center gap-2 ${isWatchPartyActive ? 'bg-red-600 text-white animate-pulse' : 'bg-white/10 text-gray-400 hover:bg-white/20'}`}
+                        title="Watch Party"
+                    >
+                        <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        {isWatchPartyActive && <span className="text-[10px] font-black uppercase tracking-widest hidden sm:block">En Vivo</span>}
+                    </button>
+
+                    <button 
+                        onClick={() => setIsChatOpen(!isChatOpen)}
+                        className={`p-2 md:p-3 rounded-full transition-all ${isChatOpen ? 'bg-red-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'}`}
+                        title="Chat"
+                    >
+                        <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                    </button>
+
                     <button 
                         onClick={() => setIsSettingsOpen(!isSettingsOpen)}
                         className="bg-white/10 hover:bg-white/20 text-white p-2 md:p-3 rounded-full transition-all relative"
@@ -554,12 +769,10 @@ const VideoPlayer: React.FC<{
                         allow="autoplay; fullscreen"
                     />
                 ) : (
-                    <video 
-                        ref={videoRef} 
-                        src={activeVideo.url} 
-                        autoPlay 
-                        controls 
-                        className="w-full h-full object-contain"
+                    <ShakaPlayer 
+                        ref={videoRef}
+                        manifestUri={activeVideo.url} 
+                        className="w-full h-full"
                     />
                 )}
 
@@ -623,6 +836,7 @@ const VideoPlayer: React.FC<{
                     </div>
                 )}
             </div>
+            </div>
 
             {/* MENÚ DE EPISODIOS (Lateral deslizable) */}
             <div className={`fixed right-0 top-0 bottom-0 w-full sm:w-80 bg-black/95 backdrop-blur-xl border-l border-white/10 z-[210] transition-transform duration-500 shadow-2xl p-6 overflow-y-auto ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -632,6 +846,26 @@ const VideoPlayer: React.FC<{
                         <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                     </button>
                 </div>
+
+                {/* Selector de Temporadas */}
+                {seasons.length > 1 && (
+                    <div className="mb-6 animate-fade-in">
+                        <label className="text-[10px] text-red-500 uppercase font-black tracking-widest mb-2 block">Temporada</label>
+                        <select 
+                            value={selectedSeasonId}
+                            onChange={(e) => {
+                                setSelectedSeasonId(e.target.value);
+                                setCurrentEpIndex(0);
+                            }}
+                            className="w-full bg-black border border-red-600/50 text-white p-3 rounded-xl outline-none focus:border-red-600 transition-all font-bold text-sm appearance-none cursor-pointer hover:bg-white/5"
+                            style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'none\' viewBox=\'0 0 24 24\' stroke=\'white\'%3E%3Cpath stroke-linecap=\'round\' stroke-linejoin=\'round\' stroke-width=\'2\' d=\'M19 9l-7 7-7-7\'%3E%3C/path%3E%3C/svg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1rem' }}
+                        >
+                            {seasons.map(s => (
+                                <option key={s.id} value={s.id} className="bg-[#121212]">Temporada {s.seasonNumber} {s.title ? `- ${s.title}` : ''}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 
                 <div className="space-y-4">
                     {episodes.map((ep, idx) => {
@@ -646,7 +880,7 @@ const VideoPlayer: React.FC<{
                             >
                                 <div className="flex gap-3">
                                     <div className="relative w-24 aspect-video flex-shrink-0 bg-gray-800 rounded overflow-hidden">
-                                        <img src={ep.thumbnailUrl || item.thumbnailUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                                        <LazyPoster src={ep.thumbnailUrl || item.thumbnailUrl} alt={ep.title} aspectRatio="16/9" className="w-full h-full opacity-60 group-hover:opacity-100 transition-opacity" />
                                         {currentEpIndex === idx && (
                                             <div className="absolute inset-0 flex items-center justify-center bg-red-600/40">
                                                 <PlayIcon className="w-6 h-6 text-white" />
@@ -668,6 +902,8 @@ const VideoPlayer: React.FC<{
                     })}
                 </div>
             </div>
+
+            {isChatOpen && <WatchPartyChat roomId="salaPrincipal" />}
         </div>
     );
 };
@@ -711,10 +947,10 @@ const ContentCard: React.FC<{
             className="group relative aspect-[2/3] bg-gray-900 rounded-lg md:rounded-xl overflow-hidden cursor-pointer transition-all duration-500 md:hover:scale-110 md:hover:z-10 shadow-xl border border-white/5 md:hover:border-red-600/50"
         >
             <StatusBadge status={item.status} />
-            <img 
+            <LazyPoster 
                 src={item.thumbnailUrl} 
                 alt={item.title}
-                className="w-full h-full object-cover transition-opacity duration-300 md:group-hover:opacity-40"
+                className="w-full h-full transition-opacity duration-300 md:group-hover:opacity-40"
             />
             
             {/* Overlay Info (Desktop) */}
@@ -758,6 +994,7 @@ type Page = 'home' | 'movies' | 'series';
 type Filter = 'all' | 'recent' | 'popular' | 'following' | 'ongoing';
 
 const MainApp: React.FC = () => {
+    useRamCleaner();
     const { profile: currentProfile, isAdmin, loading } = useAuth();
     const { t } = useLanguage();
     const { watchProgress } = useUserHistory();
@@ -930,6 +1167,7 @@ const MainApp: React.FC = () => {
 
     return (
         <div className="bg-[#0a0a0a] min-h-screen flex flex-col text-white font-montserrat">
+            <WeatherWidget />
             <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/90 via-black/50 to-transparent h-16 md:h-24 px-4 md:px-16 flex items-center justify-between transition-all backdrop-blur-sm">
                 <div className="flex items-center gap-4 md:gap-12">
                     <button 
@@ -996,7 +1234,7 @@ const MainApp: React.FC = () => {
                         </button>
                     )}
                     <div className="relative group">
-                        <img src={currentProfile.avatar} className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl cursor-pointer border-2 border-transparent hover:border-red-600 transition-all shadow-xl" />
+                        <LazyPoster src={currentProfile.avatar} alt="Avatar" aspectRatio="1/1" className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl cursor-pointer border-2 border-transparent hover:border-red-600 transition-all shadow-xl" />
                         <div className="absolute top-full right-0 mt-2 w-48 bg-black/95 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all p-2 z-50">
                             <button onClick={() => setIsProfileEditOpen(true)} className="w-full text-left px-4 py-2 text-xs font-bold hover:bg-white/5 rounded-lg transition-colors">Editar Perfil</button>
                             <button onClick={logout} className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">Cerrar Sesión</button>
@@ -1044,7 +1282,7 @@ const MainApp: React.FC = () => {
             <main className="flex-grow">
                 {currentPage === 'home' && featured && (
                     <div className="relative h-[70vh] md:h-[90vh] w-full mb-8 md:mb-16 overflow-hidden">
-                        <img src={featured.backdropUrl} className="w-full h-full object-cover animate-kenburns opacity-70" />
+                        <LazyPoster src={featured.backdropUrl} alt={featured.title} aspectRatio="auto" className="w-full h-full animate-kenburns opacity-70" />
                         <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0a] via-transparent" />
                         <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-transparent" />
                         <div className="absolute bottom-12 md:bottom-32 left-4 md:left-24 right-4 md:right-auto max-w-3xl space-y-4 md:space-y-6 animate-fade-in-up">
@@ -1149,13 +1387,15 @@ const MainApp: React.FC = () => {
 };
 
 const App: React.FC = () => (
-    <AuthProvider>
-        <LanguageProvider>
-            <UserHistoryProvider>
-                <MainApp />
-            </UserHistoryProvider>
-        </LanguageProvider>
-    </AuthProvider>
+    <BrowserRouter>
+        <AuthProvider>
+            <LanguageProvider>
+                <UserHistoryProvider>
+                    <MainApp />
+                </UserHistoryProvider>
+            </LanguageProvider>
+        </AuthProvider>
+    </BrowserRouter>
 );
 
 export default App;
