@@ -13,12 +13,8 @@
     "@google/genai": "^1.28.0",
     "@uploadcare/react-uploader": "^1.13.0",
     "firebase": "^12.9.0",
-    "framer-motion": "^12.38.0",
-    "lucide-react": "^0.577.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-router-dom": "^7.13.1",
-    "shaka-player": "^5.0.7"
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

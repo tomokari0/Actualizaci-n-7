@@ -1,9 +1,8 @@
 {
-  "name": "SeikoYT",
-  "description": "SeikoYT is a high-performance streaming platform optimized for Gacha series, featuring PWA capabilities, aggressive buffering with Shaka Player, and custom lazy loading.",
+  "name": "SeikoTV",
+  "description": "SeikoTV is a modern video streaming platform concept powered by Gemini. Discover content, chat with an AI assistant, and use AI-powered tools to generate and edit cinematic artwork.",
   "requestFramePermissions": [
     "camera",
-    "microphone",
-    "geolocation"
+    "microphone"
   ]
 }
