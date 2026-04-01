@@ -4,6 +4,7 @@ import { auth, db } from './firebaseConfig';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { UserProfile } from './types';
+import { handleFirestoreError, OperationType } from './src/lib/firestoreErrorHandler';
 
 interface AuthContextType {
     user: User | null;
@@ -27,43 +28,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+        const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
             setUser(firebaseUser);
-            
-            if (firebaseUser) {
-                // Check if profile exists in Firestore
-                const profileRef = doc(db, "usuarios", firebaseUser.uid);
-                
-                // Set up a real-time listener for the profile
-                const unsubscribeProfile = onSnapshot(profileRef, async (docSnap) => {
-                    if (docSnap.exists()) {
-                        setProfile({ id: docSnap.id, ...docSnap.data() } as UserProfile);
-                        setLoading(false);
-                    } else {
-                        // Create profile if it doesn't exist
-                        try {
-                            const isAdmin = firebaseUser.email === 'tomokari07@gmail.com';
-                            const newProfile: UserProfile = {
-                                id: firebaseUser.uid,
-                                name: firebaseUser.displayName || 'Usuario',
-                                avatar: firebaseUser.photoURL || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
-                                role: isAdmin ? 'admin' : 'user',
-                                email: firebaseUser.email || '',
-                            };
-                            await setDoc(profileRef, newProfile);
-                            // The snapshot listener will trigger again after setDoc
-                        } catch (err) {
-                            console.error("Error creating initial profile:", err);
-                            setLoading(false);
-                        }
-                    }
-                }, (error) => {
-                    console.error("Profile Snapshot Error:", error);
-                    setLoading(false);
-                });
-
-                return () => unsubscribeProfile();
-            } else {
+            if (!firebaseUser) {
                 setProfile(null);
                 setLoading(false);
             }
@@ -71,6 +38,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         return () => unsubscribeAuth();
     }, []);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const profileRef = doc(db, "usuarios", user.uid);
+        
+        const unsubscribeProfile = onSnapshot(profileRef, async (docSnap) => {
+            if (docSnap.exists()) {
+                setProfile({ id: docSnap.id, ...docSnap.data() } as UserProfile);
+                setLoading(false);
+            } else {
+                try {
+                    const isAdminUser = user.email === 'tomokari07@gmail.com';
+                    const newProfile: UserProfile = {
+                        id: user.uid,
+                        name: user.displayName || 'Usuario',
+                        avatar: user.photoURL || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png',
+                        role: isAdminUser ? 'admin' : 'user',
+                        email: user.email || '',
+                    };
+                    await setDoc(profileRef, newProfile);
+                } catch (err) {
+                    handleFirestoreError(err, OperationType.WRITE, profileRef.path);
+                    setLoading(false);
+                }
+            }
+        }, (error) => {
+            handleFirestoreError(error, OperationType.GET, profileRef.path);
+            setLoading(false);
+        });
+
+        return () => unsubscribeProfile();
+    }, [user]);
 
     const isAdmin = profile?.role === 'admin';
 

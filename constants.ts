@@ -50,7 +50,7 @@ export const MOCK_CONTENT: Content[] = [
             title: 'Supervivientes',
             description: 'El grupo se encuentra por primera vez y decide refugiarse en la escuela.',
             thumbnailUrl: 'https://picsum.photos/seed/s1e2/400/225',
-            videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
             duration: '24m'
           },
           {
@@ -58,7 +58,7 @@ export const MOCK_CONTENT: Content[] = [
             title: 'La Decisión',
             description: 'Sin suministros y rodeados, deben tomar una decisión imposible.',
             thumbnailUrl: 'https://picsum.photos/seed/s1e3/400/225',
-            videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
             duration: '21m'
           }
         ]
@@ -72,7 +72,7 @@ export const MOCK_CONTENT: Content[] = [
             title: 'Un Nuevo Mundo',
             description: 'Han pasado dos años. Las reglas han cambiado.',
             thumbnailUrl: 'https://picsum.photos/seed/s2e1/400/225',
-            videoUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
             duration: '25m'
           }
         ]
@@ -180,8 +180,8 @@ export const MOCK_CONTENT: Content[] = [
     genre: ['Adventure', 'Fantasy', 'Action'],
     rating: 'PG-13',
     releaseYear: 2021,
-    videoUrl: 'https://2qhd7azteo.ucarecd.net/8cf77205-7ec0-4431-b6f1-98c8e98f93bf/UNPELIGROINMINENTEPelculaCompletaGachaClubconvoces1080p_30fps_H264128kbit_AAC.mp4',
-    trailerUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEsc5apes.mp4',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+    trailerUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
   },
   {
     id: '11',
@@ -194,7 +194,7 @@ export const MOCK_CONTENT: Content[] = [
     rating: 'R',
     releaseYear: 2024,
     videoUrl: 'https://2qhd7azteo.ucarecd.net/dea1f289-251e-427d-be4f-f6d424910929/DentrodecasaMiniPelculaORIGINALLeerDescripcin1080p_60fps_H264128kbit_AAC.mp4',
-    trailerUrl: 'http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBigge3rJoyrides.mp4',
+    trailerUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
   },
   {
     id: '12',
@@ -245,8 +245,8 @@ export const MOCK_CONTENT: Content[] = [
     genre: ['Comedy', 'Sci-Fi', 'Action'],
     rating: 'PG',
     releaseYear: 2025,
-    videoUrl: 'http://commondatastor76age.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    trailerUrl: 'http://commondatast56orage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+    trailerUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
   },
   {
     id: '16',

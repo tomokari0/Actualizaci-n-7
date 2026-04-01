@@ -9,6 +9,10 @@ import ContentUploadForm from './ContentUploadForm';
 import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
 import ProfileEdit from './ProfileEdit';
+import PosterImage from './src/components/PosterImage';
+import ShakaPlayer from './src/components/ShakaPlayer';
+import ProfileSelector from './ProfileSelector';
+import { useMemoryCleanup } from './src/hooks/useMemoryCleanup';
 
 declare global {
   interface Window {
@@ -554,12 +558,10 @@ const VideoPlayer: React.FC<{
                         allow="autoplay; fullscreen"
                     />
                 ) : (
-                    <video 
-                        ref={videoRef} 
+                    <ShakaPlayer 
                         src={activeVideo.url} 
-                        autoPlay 
-                        controls 
-                        className="w-full h-full object-contain"
+                        className="w-full h-full"
+                        onClose={onClose}
                     />
                 )}
 
@@ -711,10 +713,10 @@ const ContentCard: React.FC<{
             className="group relative aspect-[2/3] bg-gray-900 rounded-lg md:rounded-xl overflow-hidden cursor-pointer transition-all duration-500 md:hover:scale-110 md:hover:z-10 shadow-xl border border-white/5 md:hover:border-red-600/50"
         >
             <StatusBadge status={item.status} />
-            <img 
+            <PosterImage 
                 src={item.thumbnailUrl} 
                 alt={item.title}
-                className="w-full h-full object-cover transition-opacity duration-300 md:group-hover:opacity-40"
+                className="w-full h-full"
             />
             
             {/* Overlay Info (Desktop) */}
@@ -763,6 +765,9 @@ const MainApp: React.FC = () => {
     const { watchProgress } = useUserHistory();
 
     const [currentPage, setCurrentPage] = useState<Page>('home');
+    
+    // RAM Cleanup on page change
+    useMemoryCleanup(currentPage);
     const [activeFilter, setActiveFilter] = useState<Filter>('all');
     const [contentList, setContentList] = useState<Content[]>(MOCK_CONTENT);
     const [selectedVideo, setSelectedVideo] = useState<Content | null>(null);
@@ -780,6 +785,57 @@ const MainApp: React.FC = () => {
     const [autoSkipIntro, setAutoSkipIntro] = useState(() => {
         return localStorage.getItem('seikotv_auto_skip_intro') === 'true';
     });
+
+    const [activeProfile, setActiveProfile] = useState<UserProfile | null>(() => {
+        const saved = sessionStorage.getItem('seikoyt_active_profile');
+        try {
+            return saved ? JSON.parse(saved) : null;
+        } catch {
+            return null;
+        }
+    });
+
+    const handleProfileSelect = (profile: UserProfile) => {
+        setActiveProfile(profile);
+        sessionStorage.setItem('seikoyt_active_profile', JSON.stringify(profile));
+    };
+
+    const handleSwitchProfile = () => {
+        setActiveProfile(null);
+        sessionStorage.removeItem('seikoyt_active_profile');
+    };
+
+    const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+    const [showInstallButton, setShowInstallButton] = useState(false);
+
+    useEffect(() => {
+        const handleBeforeInstallPrompt = (e: any) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+            setShowInstallButton(true);
+        };
+
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+        // Check if already installed
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            setShowInstallButton(false);
+        }
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        };
+    }, []);
+
+    const handleInstallClick = async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') {
+            setShowInstallButton(false);
+        }
+        setDeferredPrompt(null);
+    };
 
     const logout = () => {
         import('./firebaseConfig').then(({ auth }) => auth.signOut());
@@ -928,6 +984,10 @@ const MainApp: React.FC = () => {
         return <Login />;
     }
 
+    if (!activeProfile) {
+        return <ProfileSelector onProfileSelect={handleProfileSelect} />;
+    }
+
     return (
         <div className="bg-[#0a0a0a] min-h-screen flex flex-col text-white font-montserrat">
             <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/90 via-black/50 to-transparent h-16 md:h-24 px-4 md:px-16 flex items-center justify-between transition-all backdrop-blur-sm">
@@ -995,10 +1055,27 @@ const MainApp: React.FC = () => {
                             <svg className="w-6 h-6 md:w-7 md:h-7" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c.59-.24 1.13.57 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.11-.22.06-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
                         </button>
                     )}
+                    {showInstallButton && (
+                        <button 
+                            onClick={handleInstallClick}
+                            className="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[10px] md:text-xs font-black uppercase tracking-widest transition-all shadow-[0_0_15px_rgba(239,68,68,0.4)] flex items-center gap-2"
+                        >
+                            <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                            <span className="hidden sm:inline">Instalar App</span>
+                            <span className="sm:hidden">Instalar</span>
+                        </button>
+                    )}
                     <div className="relative group">
-                        <img src={currentProfile.avatar} className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl cursor-pointer border-2 border-transparent hover:border-red-600 transition-all shadow-xl" />
+                        <div className="flex items-center gap-2 cursor-pointer">
+                            <img src={activeProfile.avatar} className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl border-2 border-transparent hover:border-red-600 transition-all shadow-xl" />
+                            <span className="hidden sm:block text-xs font-bold text-gray-400 group-hover:text-white transition-colors">{activeProfile.name}</span>
+                        </div>
                         <div className="absolute top-full right-0 mt-2 w-48 bg-black/95 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all p-2 z-50">
-                            <button onClick={() => setIsProfileEditOpen(true)} className="w-full text-left px-4 py-2 text-xs font-bold hover:bg-white/5 rounded-lg transition-colors">Editar Perfil</button>
+                            <button onClick={handleSwitchProfile} className="w-full text-left px-4 py-2 text-xs font-bold hover:bg-white/5 rounded-lg transition-colors flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                                Cambiar Perfil
+                            </button>
+                            <button onClick={() => setIsProfileEditOpen(true)} className="w-full text-left px-4 py-2 text-xs font-bold hover:bg-white/5 rounded-lg transition-colors">Ajustes de Cuenta</button>
                             <button onClick={logout} className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">Cerrar Sesión</button>
                         </div>
                     </div>

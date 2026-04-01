@@ -1,0 +1,91 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Main user profile document containing PII and global settings.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "User UID" },
+        "name": { "type": "string", "description": "Display name" },
+        "avatar": { "type": "string", "description": "Avatar URL" },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "User role" },
+        "email": { "type": "string", "format": "email", "description": "User email" }
+      },
+      "required": ["id", "name", "avatar", "role", "email"]
+    },
+    "Profile": {
+      "title": "Sub-Profile",
+      "description": "Individual profile within a user account (e.g., for different family members).",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Profile name" },
+        "avatar": { "type": "string", "description": "Profile avatar URL" },
+        "role": { "type": "string", "description": "Profile role" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["name", "avatar", "role"]
+    },
+    "Content": {
+      "title": "Streaming Content",
+      "description": "Movies or series available on the platform.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "backdropUrl": { "type": "string" },
+        "type": { "type": "string", "enum": ["movie", "series"] },
+        "releaseYear": { "type": "integer" },
+        "rating": { "type": "string" },
+        "genre": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["ongoing", "completed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Episode": {
+      "title": "Series Episode",
+      "description": "Individual episode of a series.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "episodeNumber": { "type": "integer" },
+        "videoUrl": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "duration": { "type": "string" }
+      }
+    },
+    "Feedback": {
+      "title": "User Feedback",
+      "description": "Ratings and feedback provided by users.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "rating": { "type": "integer" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "date": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/usuarios/{userId}": {
+      "schema": "User",
+      "description": "Private user data"
+    },
+    "/usuarios/{userId}/perfiles/{profileId}": {
+      "schema": "Profile",
+      "description": "User sub-profiles"
+    },
+    "/content/{contentId}": {
+      "schema": "Content",
+      "description": "Public catalog"
+    },
+    "/content/{contentId}/episodes/{episodeId}": {
+      "schema": "Episode",
+      "description": "Series episodes"
+    },
+    "/feedback/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "User feedback submissions"
+    }
+  }
+}
