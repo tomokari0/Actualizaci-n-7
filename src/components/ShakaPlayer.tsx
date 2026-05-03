@@ -5,10 +5,10 @@ interface ShakaPlayerProps {
   src: string;
   className?: string;
   onClose?: () => void;
+  videoRef: React.RefObject<HTMLVideoElement>;
 }
 
-const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose, videoRef }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [player, setPlayer] = useState<shaka.Player | null>(null);
 
@@ -88,7 +88,6 @@ const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose }) =>
         ref={videoRef}
         className="w-full h-full"
         autoPlay
-        controls
         playsInline
       />
       {onClose && (

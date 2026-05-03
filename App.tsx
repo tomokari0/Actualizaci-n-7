@@ -12,6 +12,7 @@ import ProfileEdit from './ProfileEdit';
 import PosterImage from './src/components/PosterImage';
 import ShakaPlayer from './src/components/ShakaPlayer';
 import ProfileSelector from './ProfileSelector';
+import AiAssistant from './src/components/AiAssistant';
 import { useMemoryCleanup } from './src/hooks/useMemoryCleanup';
 
 declare global {
@@ -80,10 +81,114 @@ export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
 // --- ICONS ---
 const PlayIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>;
+const PauseIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>;
 const NextIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>;
 const ListIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>;
 const AudioIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>;
 const SearchIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>;
+const DownloadIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="9" x2="12" y2="15"/></svg>;
+const VolumeIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>;
+const MuteIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>;
+const FullscreenIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>;
+const ZoomInIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>;
+const SpeedIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+const RotateCcw = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>;
+const RotateCw = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>;
+
+// --- HOOK DE DESCARGAS OFFLINE ---
+const useOfflineDownloads = () => {
+    const [downloadedUrls, setDownloadedUrls] = useState<string[]>([]);
+    const [downloading, setDownloading] = useState<Record<string, number>>({});
+
+    useEffect(() => {
+        const checkDownloads = async () => {
+            try {
+                const cache = await caches.open('seikotv-downloads');
+                const keys = await cache.keys();
+                setDownloadedUrls(keys.map(req => req.url));
+            } catch (e) {
+                console.warn("Caches not available:", e);
+            }
+        };
+        checkDownloads();
+    }, []);
+
+    const downloadVideo = async (url: string, metadata?: any) => {
+        if (!url || downloading[url] !== undefined || downloadedUrls.includes(url)) return;
+        
+        setDownloading(prev => ({ ...prev, [url]: 0 }));
+        
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error("Failed to fetch video for download");
+
+            const reader = response.body?.getReader();
+            const contentLength = +(response.headers.get('Content-Length') || 0);
+
+            if (!reader) {
+                const cache = await caches.open('seikotv-downloads');
+                await cache.put(url, response.clone());
+                setDownloadedUrls(prev => [...prev, url]);
+                return;
+            }
+
+            let receivedLength = 0;
+            const chunks = [];
+
+            while(true) {
+                const {done, value} = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                receivedLength += value.length;
+                if (contentLength) {
+                    setDownloading(prev => ({ ...prev, [url]: Math.round((receivedLength / contentLength) * 100) }));
+                }
+            }
+
+            const blob = new Blob(chunks);
+            const cache = await caches.open('seikotv-downloads');
+            await cache.put(url, new Response(blob, {
+                headers: response.headers
+            }));
+            
+            setDownloadedUrls(prev => [...prev, url]);
+
+            // Persistir metadata para modo offline
+            if (metadata) {
+                const savedMetadata = JSON.parse(localStorage.getItem('seikotv_downloads_metadata') || '{}');
+                savedMetadata[url] = metadata;
+                localStorage.setItem('seikotv_downloads_metadata', JSON.stringify(savedMetadata));
+            }
+            
+            // Avisar sobre persistencia
+            if (!localStorage.getItem('seikotv_persistence_warning_shown')) {
+                alert("¡Descarga completa! Recuerda que si borras el caché de tu navegador, tus descargas desaparecerán.");
+                localStorage.setItem('seikotv_persistence_warning_shown', 'true');
+            }
+        } catch (error) {
+            console.error("Download error:", error);
+            alert("La descarga falló. Verifique su espacio en disco o conexión.");
+        } finally {
+            setDownloading(prev => {
+                const n = { ...prev };
+                delete n[url];
+                return n;
+            });
+        }
+    };
+
+    const removeDownload = async (url: string) => {
+        const cache = await caches.open('seikotv-downloads');
+        await cache.delete(url);
+        setDownloadedUrls(prev => prev.filter(u => u !== url));
+        
+        const savedMetadata = JSON.parse(localStorage.getItem('seikotv_downloads_metadata') || '{}');
+        delete savedMetadata[url];
+        localStorage.setItem('seikotv_downloads_metadata', JSON.stringify(savedMetadata));
+    };
+
+    return { downloadedUrls, downloading, downloadVideo, removeDownload };
+};
 
 // --- FEEDBACK TOAST COMPONENT ---
 const FeedbackToast: React.FC<{ 
@@ -164,7 +269,11 @@ const VideoPlayer: React.FC<{
     onClose: () => void;
     autoSkipIntro: boolean;
     setAutoSkipIntro: (val: boolean) => void;
-}> = ({ item, onClose, autoSkipIntro, setAutoSkipIntro }) => {
+    downloadedUrls: string[];
+    downloadVideo: (url: string, metadata?: any) => void;
+    downloading: Record<string, number>;
+    removeDownload: (url: string) => void;
+}> = ({ item, onClose, autoSkipIntro, setAutoSkipIntro, downloadedUrls, downloadVideo, downloading, removeDownload }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const ytPlayerRef = useRef<any>(null);
     const ytContainerId = useMemo(() => `yt-player-${Math.random().toString(36).substr(2, 9)}`, []);
@@ -180,9 +289,14 @@ const VideoPlayer: React.FC<{
     const [lastTime, setLastTime] = useState(0);
     const [showControls, setShowControls] = useState(true);
     const [currentTime, setCurrentTime] = useState(0);
+    const [isPlaying, setIsPlaying] = useState(true);
+    const [isMuted, setIsMuted] = useState(false);
+    const [volume, setVolume] = useState(1);
     const [duration, setDuration] = useState(0);
     const [showSkipButton, setShowSkipButton] = useState(false);
     const [showSkipNotification, setShowSkipNotification] = useState(false);
+    const [playbackSpeed, setPlaybackSpeed] = useState(1);
+    const [zoomLevel, setZoomLevel] = useState(1);
     const hasAutoSkippedRef = useRef<string | null>(null);
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -198,6 +312,28 @@ const VideoPlayer: React.FC<{
         const ep = episodes[currentEpIndex];
         return ep ? { url: getUrl(ep), id: `${item.id}_${ep.id}` } : { url: '', id: '' };
     }, [item, episodes, currentEpIndex, currentAudio]);
+
+    // Refs for outside click detection
+    const audioMenuRef = useRef<HTMLDivElement>(null);
+    const settingsMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (audioMenuRef.current && !audioMenuRef.current.contains(event.target as Node)) {
+                setIsAudioMenuOpen(false);
+            }
+            if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target as Node)) {
+                setIsSettingsOpen(false);
+            }
+        };
+
+        if (isAudioMenuOpen || isSettingsOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isAudioMenuOpen, isSettingsOpen]);
 
     // Detector de links de Uqload para conversión automática a Embed
     const processedUrl = useMemo(() => {
@@ -294,6 +430,10 @@ const VideoPlayer: React.FC<{
                                 } else if (watchProgress[activeVideo.id]) {
                                     event.target.seekTo(watchProgress[activeVideo.id].currentTime, true);
                                 }
+                            },
+                            onStateChange: (event: any) => {
+                                if (event.data === (window as any).YT.PlayerState.PLAYING) setIsPlaying(true);
+                                else if (event.data === (window as any).YT.PlayerState.PAUSED) setIsPlaying(false);
                             }
                         }
                     });
@@ -367,12 +507,108 @@ const VideoPlayer: React.FC<{
 
     const isEmbed = processedUrl.includes('iframe') || processedUrl.includes('uqload.com') || processedUrl.includes('youtube.com') || item.source === 'youtube';
 
+    const playerContainerRef = useRef<HTMLDivElement>(null);
+
+    const togglePlay = useCallback(() => {
+        if (isEmbed) {
+            if (ytPlayerRef.current) {
+                const state = ytPlayerRef.current.getPlayerState();
+                if (state === 1) ytPlayerRef.current.pauseVideo();
+                else ytPlayerRef.current.playVideo();
+            }
+            return;
+        }
+
+        if (videoRef.current) {
+            if (videoRef.current.paused) videoRef.current.play();
+            else videoRef.current.pause();
+        }
+    }, [isEmbed]);
+
+    const toggleMute = useCallback(() => {
+        if (isEmbed) {
+            if (ytPlayerRef.current) {
+                if (ytPlayerRef.current.isMuted()) ytPlayerRef.current.unMute();
+                else ytPlayerRef.current.mute();
+                setIsMuted(ytPlayerRef.current.isMuted());
+            }
+            return;
+        }
+
+        if (videoRef.current) {
+            videoRef.current.muted = !videoRef.current.muted;
+            setIsMuted(videoRef.current.muted);
+        }
+    }, [isEmbed]);
+
+    const jump = useCallback((seconds: number) => {
+        if (isEmbed) {
+            if (ytPlayerRef.current) {
+                const current = ytPlayerRef.current.getCurrentTime();
+                ytPlayerRef.current.seekTo(current + seconds, true);
+            }
+            return;
+        }
+
+        if (videoRef.current) {
+            videoRef.current.currentTime += seconds;
+        }
+    }, [isEmbed]);
+
+    const toggleFullscreen = useCallback(() => {
+        if (!playerContainerRef.current) return;
+        if (!document.fullscreenElement) {
+            playerContainerRef.current.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    }, []);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (!showControls) setShowControls(true);
+            resetIdleTimer();
+
+            switch(e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    togglePlay();
+                    break;
+                case 'KeyM':
+                    toggleMute();
+                    break;
+                case 'KeyF':
+                    toggleFullscreen();
+                    break;
+                case 'ArrowRight':
+                    jump(10);
+                    break;
+                case 'ArrowLeft':
+                    jump(-10);
+                    break;
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [togglePlay, toggleMute, toggleFullscreen, jump, showControls, resetIdleTimer]);
+
     const youtubeUrl = useMemo(() => {
         if (item.source === 'youtube' && item.youtubeId) {
             return `https://www.youtube.com/embed/${item.youtubeId}?autoplay=1&modestbranding=1&rel=0&showinfo=0&controls=0&enablejsapi=1`;
         }
         return null;
     }, [item]);
+
+    useEffect(() => {
+        if (ytPlayerRef.current && ytPlayerRef.current.setPlaybackRate) {
+            ytPlayerRef.current.setPlaybackRate(playbackSpeed);
+        }
+        if (videoRef.current) {
+            videoRef.current.playbackRate = playbackSpeed;
+        }
+    }, [playbackSpeed]);
 
     useEffect(() => {
         const v = videoRef.current;
@@ -397,9 +633,21 @@ const VideoPlayer: React.FC<{
         
         v.addEventListener('timeupdate', onTime);
         v.addEventListener('loadedmetadata', onLoaded);
+        v.addEventListener('play', () => setIsPlaying(true));
+        v.addEventListener('pause', () => setIsPlaying(false));
+        v.addEventListener('loadedmetadata', () => {
+            v.playbackRate = playbackSpeed;
+        });
+        v.addEventListener('volumechange', () => {
+            setIsMuted(v.muted);
+            setVolume(v.volume);
+        });
+        
         return () => { 
             v.removeEventListener('timeupdate', onTime); 
             v.removeEventListener('loadedmetadata', onLoaded); 
+            v.removeEventListener('play', () => setIsPlaying(true));
+            v.removeEventListener('pause', () => setIsPlaying(false));
         };
     }, [activeVideo.id, isEmbed, lastTime]);
 
@@ -450,7 +698,7 @@ const VideoPlayer: React.FC<{
     }, [item, episodes, currentEpIndex]);
 
     return (
-        <div className="fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center animate-fade-in overflow-hidden cursor-none" style={{ cursor: showControls ? 'default' : 'none' }}>
+        <div ref={playerContainerRef} className="fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center animate-fade-in overflow-hidden cursor-none" style={{ cursor: showControls ? 'default' : 'none' }}>
             {/* Cabecera del reproductor */}
             <div className={`absolute top-0 inset-x-0 h-16 md:h-20 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between px-4 md:px-8 z-10 transition-all duration-700 ease-in-out ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
                 <div className="flex flex-col min-w-0">
@@ -459,32 +707,74 @@ const VideoPlayer: React.FC<{
                         {item.title} {item.type === 'series' && episodes[currentEpIndex] ? ` - Cap. ${currentEpIndex + 1}: ${episodes[currentEpIndex].title}` : ''}
                     </h2>
                 </div>
-                <div className="flex gap-2 md:gap-4">
-                    <button 
-                        onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                        className="bg-white/10 hover:bg-white/20 text-white p-2 md:p-3 rounded-full transition-all relative"
-                        title="Configuración"
-                    >
-                        <svg className="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-                        
-                        {isSettingsOpen && (
-                            <div className="absolute top-full right-0 mt-2 w-56 md:w-64 bg-black/95 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl animate-scale-in p-4 z-50">
-                                <h4 className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-3">Ajustes del Reproductor</h4>
-                                <div className="flex items-center justify-between gap-3">
-                                    <span className="text-xs font-bold text-white">Omitir intros automáticamente</span>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input 
-                                            type="checkbox" 
-                                            className="sr-only peer"
-                                            checked={autoSkipIntro}
-                                            onChange={(e) => setAutoSkipIntro(e.target.checked)}
-                                        />
-                                        <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                                    </label>
+                    <div className="flex gap-2 md:gap-4">
+                        <div ref={settingsMenuRef} className="relative">
+                            <button 
+                                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                                className="bg-white/10 hover:bg-white/20 text-white p-2 md:p-3 rounded-full transition-all"
+                                title="Configuración"
+                            >
+                                <svg className="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                            
+                            {isSettingsOpen && (
+                                <div className="absolute top-full right-0 mt-2 w-56 md:w-64 bg-black/95 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl animate-scale-in p-4 z-50">
+                                    <h4 className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-3">Ajustes del Reproductor</h4>
+                                    <div className="flex items-center justify-between gap-3 mb-4">
+                                        <span className="text-xs font-bold text-white">Omitir intros automáticamente</span>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                className="sr-only peer"
+                                                checked={autoSkipIntro}
+                                                onChange={(e) => setAutoSkipIntro(e.target.checked)}
+                                            />
+                                            <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                                        </label>
+                                    </div>
+
+                                    <div className="border-t border-white/10 pt-4 mb-4">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <SpeedIcon className="w-4 h-4 text-gray-500" />
+                                            <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Velocidad</span>
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {[0.5, 1, 1.5, 2].map(speed => (
+                                                <button
+                                                    key={speed}
+                                                    onClick={() => {
+                                                        setPlaybackSpeed(speed);
+                                                        if (videoRef.current) videoRef.current.playbackRate = speed;
+                                                        if (ytPlayerRef.current) ytPlayerRef.current.setPlaybackRate(speed);
+                                                    }}
+                                                    className={`py-1 text-[10px] font-bold rounded-md transition-all ${playbackSpeed === speed ? 'bg-red-600 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
+                                                >
+                                                    {speed}x
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t border-white/10 pt-4">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <ZoomInIcon className="w-4 h-4 text-gray-500" />
+                                            <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Zoom</span>
+                                        </div>
+                                        <div className="grid grid-cols-4 gap-2">
+                                            {[1, 1.25, 1.5, 2].map(zoom => (
+                                                <button
+                                                    key={zoom}
+                                                    onClick={() => setZoomLevel(zoom)}
+                                                    className={`py-1 text-[10px] font-bold rounded-md transition-all ${zoomLevel === zoom ? 'bg-red-600 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}
+                                                >
+                                                    {zoom === 1 ? 'Reset' : zoom + 'x'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </button>
+                            )}
+                        </div>
 
                     <button 
                         onClick={handleMarkAsWatched}
@@ -493,7 +783,7 @@ const VideoPlayer: React.FC<{
                         Visto
                     </button>
                     {availableTracks.length > 1 && (
-                        <div className="relative">
+                        <div ref={audioMenuRef} className="relative">
                             <button 
                                 onClick={() => setIsAudioMenuOpen(!isAudioMenuOpen)}
                                 className="bg-white/10 hover:bg-white/20 text-white p-2 md:p-3 rounded-full transition-all flex items-center gap-2"
@@ -537,7 +827,10 @@ const VideoPlayer: React.FC<{
             </div>
 
             {/* Contenedor de Video Dinámico */}
-            <div className="w-full h-full relative flex items-center justify-center">
+            <div 
+                className="w-full h-full relative flex items-center justify-center transition-transform duration-300 ease-out origin-center overflow-hidden" 
+                style={{ transform: `scale(${zoomLevel})` }}
+            >
                 {loading ? (
                     <div className="flex flex-col items-center gap-4">
                         <div className="w-12 h-12 border-4 border-red-500 border-t-transparent rounded-full animate-spin"></div>
@@ -562,6 +855,7 @@ const VideoPlayer: React.FC<{
                         src={activeVideo.url} 
                         className="w-full h-full"
                         onClose={onClose}
+                        videoRef={videoRef}
                     />
                 )}
 
@@ -593,37 +887,104 @@ const VideoPlayer: React.FC<{
                     </div>
                 )}
 
-                {/* Barra de Progreso Manual (Solo para Video Nativo por ahora, YouTube requiere API compleja) */}
-                {!youtubeUrl && !isEmbed && (
-                    <div className={`absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/90 to-transparent transition-all duration-700 ease-in-out ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-                        <div className="flex items-center gap-4">
-                            <span className="text-[10px] font-bold text-gray-400 w-12">{formatTime(currentTime)}</span>
-                            <input 
-                                type="range"
-                                min="0"
-                                max={duration || 100}
-                                value={currentTime}
-                                onChange={handleSeek}
-                                className="flex-grow video-progress"
-                            />
-                            <span className="text-[10px] font-bold text-gray-400 w-12">{formatTime(duration)}</span>
+                {/* Bottom Controls Bar */}
+                <div className={`absolute bottom-0 inset-x-0 h-32 md:h-40 bg-gradient-to-t from-black via-black/80 to-transparent flex flex-col justify-end px-4 md:px-12 pb-6 md:pb-10 transition-all duration-700 ease-in-out ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'}`}>
+                    {/* Progress Bar */}
+                    <div className="group/progress relative h-1.5 md:h-2 mb-6 md:mb-8 flex items-center cursor-pointer">
+                        <input 
+                            type="range"
+                            min="0"
+                            max={duration || 100}
+                            value={currentTime}
+                            onChange={handleSeek}
+                            className="absolute inset-0 w-full h-full opacity-0 z-20 cursor-pointer"
+                        />
+                        <div className="absolute inset-0 bg-white/20 rounded-full"></div>
+                        <div 
+                            className="absolute inset-y-0 left-0 bg-red-600 rounded-full shadow-[0_0_10px_#ef4444] transition-all duration-150"
+                            style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                        />
+                        <div 
+                            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 bg-white rounded-full shadow-2xl scale-0 group-hover/progress:scale-100 transition-transform duration-200 z-10"
+                            style={{ left: `${(currentTime / (duration || 1)) * 100}%`, marginLeft: '-10px' }}
+                        />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 md:gap-10">
+                        <div className="flex items-center gap-4 md:gap-8 min-w-0">
+                            <button onClick={togglePlay} className="text-white hover:text-red-500 transition-all p-1">
+                                {isPlaying ? <PauseIcon className="w-8 h-8 md:w-10 md:h-10" /> : <PlayIcon className="w-8 h-8 md:w-10 md:h-10" />}
+                            </button>
+
+                            <div className="flex items-center gap-2 md:gap-4">
+                                <button onClick={() => jump(-10)} className="text-gray-400 hover:text-white transition-all" title="Retroceder 10s">
+                                    <RotateCcw className="w-6 h-6 md:w-8 md:h-8" />
+                                </button>
+                                <button onClick={() => jump(10)} className="text-gray-400 hover:text-white transition-all" title="Adelantar 10s">
+                                    <RotateCw className="w-6 h-6 md:w-8 md:h-8" />
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <span className="text-white font-mono text-xs md:text-lg font-bold drop-shadow-md">
+                                    {formatTime(currentTime)}
+                                </span>
+                                <span className="text-gray-500 font-mono text-xs md:text-lg font-medium">/</span>
+                                <span className="text-gray-400 font-mono text-xs md:text-lg font-medium">
+                                    {formatTime(duration)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 md:gap-6">
+                            <div className="flex items-center gap-2 group/volume">
+                                <button onClick={toggleMute} className="text-gray-400 hover:text-white transition-all">
+                                    {isMuted || volume === 0 ? <MuteIcon className="w-6 h-6 md:w-8 md:h-8" /> : <VolumeIcon className="w-6 h-6 md:w-8 md:h-8" />}
+                                </button>
+                                <div className="w-0 overflow-hidden group-hover/volume:w-24 md:group-hover/volume:w-32 transition-all duration-300">
+                                    <input 
+                                        type="range"
+                                        min="0"
+                                        max="1"
+                                        step="0.05"
+                                        value={isMuted ? 0 : volume}
+                                        onChange={(e) => {
+                                            const v = parseFloat(e.target.value);
+                                            setVolume(v);
+                                            if (videoRef.current) videoRef.current.volume = v;
+                                            if (ytPlayerRef.current) ytPlayerRef.current.setVolume(v * 100);
+                                            setIsMuted(v === 0);
+                                        }}
+                                        className="w-full h-1 bg-white/20 rounded-full appearance-none accent-red-600 cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+
+                            {item.type === 'series' && currentEpIndex < episodes.length - 1 && (
+                                <button 
+                                    onClick={handleNext}
+                                    className="group flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-4 md:px-8 py-2 md:py-4 rounded-xl md:rounded-2xl transition-all shadow-xl backdrop-blur-md"
+                                >
+                                    <span className="text-[10px] md:text-sm font-black uppercase tracking-[0.2em]">Siguiente</span>
+                                    <NextIcon className="w-4 h-4 md:w-6 md:h-6 group-hover:translate-x-1 transition-transform" />
+                                </button>
+                            )}
+                            
+                            {youtubeUrl && (
+                                <button 
+                                    onClick={handleMarkAsWatched}
+                                    className="bg-red-600 hover:bg-red-700 text-white px-6 md:px-8 py-2 md:py-3 rounded-xl font-bold uppercase tracking-widest transition-all shadow-xl text-xs md:text-sm"
+                                >
+                                    Terminar
+                                </button>
+                            )}
+
+                            <button onClick={toggleFullscreen} className="text-gray-400 hover:text-white transition-all" title="Pantalla Completa">
+                                <FullscreenIcon className="w-6 h-6 md:w-8 md:h-8" />
+                            </button>
                         </div>
                     </div>
-                )}
-                
-                {/* Overlay para YouTube que permite ver controles pero bloquea clics directos si se desea */}
-                {youtubeUrl && (
-                    <div className={`absolute bottom-0 inset-x-0 p-6 bg-gradient-to-t from-black/90 to-transparent transition-all duration-700 ease-in-out ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-                         <div className="flex justify-center">
-                            <button 
-                                onClick={handleMarkAsWatched}
-                                className="bg-red-600 text-white px-8 py-3 rounded-xl font-bold uppercase tracking-widest hover:bg-red-700 transition-all shadow-2xl"
-                            >
-                                Marcar como Terminado
-                            </button>
-                         </div>
-                    </div>
-                )}
+                </div>
             </div>
 
             {/* MENÚ DE EPISODIOS (Lateral deslizable) */}
@@ -659,10 +1020,47 @@ const VideoPlayer: React.FC<{
                                             <div className="h-full bg-red-500" style={{ width: `${percent}%` }} />
                                         </div>
                                     </div>
-                                    <div className="flex flex-col justify-center min-w-0">
+                                    <div className="flex flex-col justify-center min-w-0 flex-grow">
                                         <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Capítulo {idx + 1}</span>
                                         <h4 className="text-sm font-bold text-white truncate">{ep.title}</h4>
-                                        <span className="text-[10px] text-gray-500">{ep.duration}</span>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] text-gray-500">{ep.duration}</span>
+                                            {/* Download Button */}
+                                            {ep.videoUrl && (
+                                                <button 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (downloadedUrls.includes(ep.videoUrl)) {
+                                                            removeDownload(ep.videoUrl);
+                                                        } else {
+                                                            downloadVideo(ep.videoUrl, {
+                                                                id: `${item.id}_${ep.id}`,
+                                                                title: `${item.title} - ${ep.title}`,
+                                                                thumbnailUrl: ep.thumbnailUrl || item.thumbnailUrl,
+                                                                type: 'episode',
+                                                                parentContent: item
+                                                            });
+                                                        }
+                                                    }}
+                                                    className="p-1 hover:bg-white/10 rounded-full transition-all relative"
+                                                >
+                                                    {downloading[ep.videoUrl] !== undefined ? (
+                                                        <div className="relative w-4 h-4">
+                                                            <svg className="w-full h-full animate-spin text-red-500" viewBox="0 0 24 24">
+                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                            </svg>
+                                                            {/* Neon effect */}
+                                                            <div className="absolute inset-0 bg-red-500 blur-sm rounded-full opacity-50 animate-pulse"></div>
+                                                        </div>
+                                                    ) : downloadedUrls.includes(ep.videoUrl) ? (
+                                                        <svg className="w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                                    ) : (
+                                                        <DownloadIcon className="w-4 h-4 text-gray-400 hover:text-white" />
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -756,13 +1154,14 @@ const ContentCard: React.FC<{
 };
 
 // --- COMPONENTE PRINCIPAL ---
-type Page = 'home' | 'movies' | 'series';
+type Page = 'home' | 'movies' | 'series' | 'downloads';
 type Filter = 'all' | 'recent' | 'popular' | 'following' | 'ongoing';
 
 const MainApp: React.FC = () => {
     const { profile: currentProfile, isAdmin, loading } = useAuth();
     const { t } = useLanguage();
     const { watchProgress } = useUserHistory();
+    const { downloadedUrls, downloading, downloadVideo, removeDownload } = useOfflineDownloads();
 
     const [currentPage, setCurrentPage] = useState<Page>('home');
     
@@ -1005,13 +1404,13 @@ const MainApp: React.FC = () => {
                         SEIKOTV
                     </h1>
                     <nav className="hidden md:flex gap-8">
-                        {['home', 'movies', 'series'].map(p => (
+                        {['home', 'movies', 'series', 'downloads'].map(p => (
                             <button 
                                 key={p} 
                                 onClick={() => { setCurrentPage(p as Page); setSearchResults([]); }} 
                                 className={`text-[12px] font-bold uppercase tracking-[0.3em] transition-all hover:text-red-500 ${currentPage === p && searchResults.length === 0 ? 'text-red-500 border-b-2 border-red-500' : 'text-gray-400'}`}
                             >
-                                {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : 'Series'}
+                                {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : 'Descargas'}
                             </button>
                         ))}
                     </nav>
@@ -1099,13 +1498,13 @@ const MainApp: React.FC = () => {
             {/* Mobile Menu Overlay */}
             <div className={`fixed inset-0 bg-black/95 z-[60] transition-all duration-500 md:hidden ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
                 <div className="flex flex-col items-center justify-center h-full gap-8">
-                    {['home', 'movies', 'series'].map(p => (
+                    {['home', 'movies', 'series', 'downloads'].map(p => (
                         <button 
                             key={p} 
-                            onClick={() => { setCurrentPage(p as Page); setIsMobileMenuOpen(false); }} 
+                            onClick={() => { setCurrentPage(p as Page); setIsMobileMenuOpen(false); setSearchResults([]); }} 
                             className={`text-4xl font-bebas tracking-[0.2em] transition-all ${currentPage === p ? 'text-red-500' : 'text-gray-400'}`}
                         >
-                            {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : 'Series'}
+                            {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : 'Mis Descargas'}
                         </button>
                     ))}
                     <button 
@@ -1134,13 +1533,96 @@ const MainApp: React.FC = () => {
                                 <button className="bg-gray-500/30 backdrop-blur-md text-white px-6 md:px-12 py-3 md:py-5 rounded-lg md:rounded-xl font-bold hover:bg-gray-500/50 transition-all text-sm md:text-lg uppercase tracking-widest border border-white/10">
                                     MÁS INFO
                                 </button>
+                                {/* Download button for featured movie */}
+                                {featured.type === 'movie' && featured.videoUrl && (
+                                    <button 
+                                        onClick={() => downloadedUrls.includes(featured.videoUrl!) ? removeDownload(featured.videoUrl!) : downloadVideo(featured.videoUrl!, { ...featured, id: featured.id, type: 'movie' })}
+                                        className="bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-all"
+                                    >
+                                        {downloading[featured.videoUrl!] !== undefined ? (
+                                            <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                                        ) : downloadedUrls.includes(featured.videoUrl!) ? (
+                                            <svg className="w-5 h-5 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                        ) : (
+                                            <DownloadIcon className="w-5 h-5" />
+                                        )}
+                                        <span className="text-xs font-bold uppercase tracking-widest">{downloadedUrls.includes(featured.videoUrl!) ? 'Descargado' : 'Descargar'}</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
                 )}
 
                 <div className="px-4 md:px-24 pb-24">
-                    {searchResults.length > 0 && (
+                    {currentPage === 'downloads' ? (
+                        <div className="animate-fade-in pt-24 md:pt-32">
+                            <h3 className="text-2xl md:text-5xl font-bebas text-white tracking-[0.2em] uppercase border-l-4 md:border-l-8 border-red-600 pl-4 md:pl-6 mb-12">
+                                Mis Descargas
+                            </h3>
+                            
+                            {downloadedUrls.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-24 text-center">
+                                    <DownloadIcon className="w-16 h-16 text-gray-700 mb-4" />
+                                    <p className="text-gray-500 text-xl font-medium">No tienes descargas aún.</p>
+                                    <p className="text-gray-600 text-sm mt-2">Los videos que descargues aparecerán aquí para ver sin conexión.</p>
+                                    <button onClick={() => setCurrentPage('home')} className="mt-8 bg-red-600 text-white px-8 py-3 rounded-full font-bold uppercase tracking-widest hover:bg-red-700 transition-all">Ver catálogo</button>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                                    {downloadedUrls.map(url => {
+                                        const metadata = JSON.parse(localStorage.getItem('seikotv_downloads_metadata') || '{}')[url];
+                                        if (!metadata) return null;
+                                        
+                                        return (
+                                            <div key={url} className="group relative bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-red-600/50 transition-all shadow-2xl">
+                                                <div className="relative aspect-video">
+                                                    <img src={metadata.thumbnailUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                                    <button 
+                                                        onClick={() => {
+                                                            setSelectedVideo(metadata.type === 'episode' ? metadata.parentContent : metadata);
+                                                        }}
+                                                        className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <div className="bg-red-600 p-4 rounded-full shadow-2xl transform scale-75 group-hover:scale-100 transition-transform">
+                                                            <PlayIcon className="w-8 h-8 text-white" />
+                                                        </div>
+                                                    </button>
+                                                </div>
+                                                <div className="p-6">
+                                                    <div className="flex justify-between items-start gap-4">
+                                                        <div className="min-w-0">
+                                                            <h4 className="text-white font-bold text-lg truncate">{metadata.title}</h4>
+                                                            <p className="text-gray-500 text-[10px] uppercase tracking-widest mt-1">Listo para ver offline</p>
+                                                        </div>
+                                                        <button 
+                                                            onClick={() => removeDownload(url)}
+                                                            className="text-gray-500 hover:text-red-500 transition-colors"
+                                                            title="Eliminar descarga"
+                                                        >
+                                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                            
+                            <div className="mt-12 p-6 bg-red-600/10 border border-red-600/20 rounded-2xl flex items-start gap-4">
+                                <svg className="w-6 h-6 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <div>
+                                    <h5 className="text-white font-bold text-sm">Información sobre Descargas</h5>
+                                    <p className="text-gray-400 text-xs mt-1 leading-relaxed">
+                                        Las descargas ocupan espacio en tu dispositivo. La persistencia depende de tu navegador; si borras los datos del sitio o el historial, las descargas podrían eliminarse automáticamente.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            {searchResults.length > 0 && (
                         <div className="mb-16 animate-fade-in">
                             <div className="flex justify-between items-center mb-8">
                                 <h3 className="text-2xl md:text-4xl font-bebas text-white tracking-[0.2em] uppercase border-l-4 md:border-l-8 border-red-600 pl-4 md:pl-6">
@@ -1206,6 +1688,8 @@ const MainApp: React.FC = () => {
                             );
                         })}
                     </div>
+                        </>
+                    )}
                 </div>
             </main>
 
@@ -1215,12 +1699,17 @@ const MainApp: React.FC = () => {
                     onClose={() => setSelectedVideo(null)} 
                     autoSkipIntro={autoSkipIntro}
                     setAutoSkipIntro={setAutoSkipIntro}
+                    downloadedUrls={downloadedUrls}
+                    downloadVideo={downloadVideo}
+                    downloading={downloading}
+                    removeDownload={removeDownload}
                 />
             )}
             {isAdminOpen && <AdminPanel onClose={() => setIsAdminOpen(false)} />}
             {isUploadFormOpen && <ContentUploadForm onClose={() => setIsUploadFormOpen(false)} />}
             {isProfileEditOpen && <ProfileEdit onClose={() => setIsProfileEditOpen(false)} />}
             {showFeedback && currentProfile && <FeedbackToast userId={currentProfile.id} onClose={() => setShowFeedback(false)} />}
+            <AiAssistant />
         </div>
     );
 };

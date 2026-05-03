@@ -1,4 +1,5 @@
 const CACHE_NAME = 'seikoyt-cache-v1';
+const DOWNLOADS_CACHE_NAME = 'seikotv-downloads';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -16,10 +17,49 @@ self.addEventListener('install', (event) => {
   );
 });
 
+self.addEventListener('activate', (event) => {
+    event.waitUntil(
+        caches.keys().then((cacheNames) => {
+            return Promise.all(
+                cacheNames.map((cacheName) => {
+                    if (cacheName !== CACHE_NAME && cacheName !== DOWNLOADS_CACHE_NAME) {
+                        return caches.delete(cacheName);
+                    }
+                })
+            );
+        })
+    );
+});
+
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
+  const url = new URL(event.request.url);
+  const isVideo = url.pathname.endsWith('.mp4') || url.pathname.endsWith('.m3u8');
+
+  if (isVideo) {
+    // Cache First for videos in downloads
+    event.respondWith(
+      caches.match(event.request, { cacheName: DOWNLOADS_CACHE_NAME }).then((response) => {
+        if (response) {
+          return response;
+        }
+        // If not in downloads cache, try regular fetch
+        // If offline (network error), this will fail and we can provide a fallback if needed
+        return fetch(event.request).catch(() => {
+            // Fallback for offline if not found in cache
+            return caches.match(event.request);
+        });
+      })
+    );
+  } else {
+    // Standard caching strategy for other assets
+    event.respondWith(
+      caches.match(event.request).then((response) => {
+        return response || fetch(event.request).then((networkResponse) => {
+            // Optional: cache newly fetched assets? 
+            // For now keep it simple as the user didn't ask to change asset caching
+            return networkResponse;
+        });
+      })
+    );
+  }
 });

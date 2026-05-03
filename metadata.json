@@ -1,6 +1,6 @@
 {
-  "name": "SeikoYT",
-  "description": "SeikoYT is a high-performance streaming platform for Gacha series, optimized with custom caching, lazy loading, and aggressive buffering.",
+  "name": "Seikotv",
+  "description": "Seikotv is a high-performance streaming platform for Gacha series, featuring offline downloads, custom caching, and optimized playback.",
   "requestFramePermissions": [
     "camera",
     "microphone"
