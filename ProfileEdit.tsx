@@ -3,34 +3,31 @@ import React, { useState } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './firebaseConfig';
 import { doc, updateDoc } from 'firebase/firestore';
-import Uploader from './Uploader';
+import AvatarUpload from './src/components/AvatarUpload';
 
-const ProfileEdit: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-    const { profile } = useAuth();
-    const [name, setName] = useState(profile?.name || '');
+interface ProfileEditProps {
+    onClose: () => void;
+    activeProfile: any; // Sub-profile being edited
+}
+
+const ProfileEdit: React.FC<ProfileEditProps> = ({ onClose, activeProfile }) => {
+    const { user } = useAuth();
+    const [name, setName] = useState(activeProfile?.name || '');
     const [loading, setLoading] = useState(false);
-    const [uploading, setUploading] = useState(false);
-    const [preview, setPreview] = useState<string | null>(profile?.avatar || null);
+    const [preview, setPreview] = useState<string | null>(activeProfile?.avatar || null);
 
-    const handleUploadSuccess = async (url: string) => {
-        if (!profile) return;
+    const handleUploadSuccess = (url: string) => {
         setPreview(url);
-        try {
-            const profileRef = doc(db, "usuarios", profile.id);
-            await updateDoc(profileRef, { avatar: url });
-        } catch (err) {
-            console.error("Error updating profile avatar:", err);
-            alert("Error al actualizar el avatar");
-        }
     };
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!profile) return;
+        if (!user || !activeProfile) return;
 
         setLoading(true);
         try {
-            const profileRef = doc(db, "usuarios", profile.id);
+            // Path requested by user: usuarios/{uid}/perfiles/{profileId}
+            const profileRef = doc(db, "usuarios", user.uid, "perfiles", activeProfile.id);
             await updateDoc(profileRef, { name });
             onClose();
         } catch (err) {
@@ -52,15 +49,15 @@ const ProfileEdit: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 </div>
 
                 <div className="flex flex-col items-center mb-8">
-                    <div className="relative group mb-4">
-                        <img 
-                            src={preview || 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png'} 
-                            alt="Avatar" 
-                            className={`w-32 h-32 rounded-full object-cover border-4 border-red-600/20 group-hover:border-red-600 transition-all ${uploading ? 'opacity-50' : ''}`}
+                    {user && activeProfile && (
+                        <AvatarUpload 
+                            uid={user.uid} 
+                            profileId={activeProfile.id} 
+                            currentAvatar={preview || undefined}
+                            onUploadSuccess={handleUploadSuccess}
                         />
-                    </div>
-                    <Uploader onUploadSuccess={handleUploadSuccess} />
-                    <p className="text-[10px] text-gray-500 mt-4 uppercase font-black tracking-widest">Foto de Perfil</p>
+                    )}
+                    <p className="text-[10px] text-gray-500 mt-4 uppercase font-black tracking-widest">Foto de Perfil (ImageKit Optimized)</p>
                 </div>
 
                 <form onSubmit={handleSave} className="space-y-6">
@@ -68,7 +65,7 @@ const ProfileEdit: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1 block">Nombre de Usuario</label>
                         <input 
                             type="text"
-                            className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-red-600 transition-all"
+                            className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-white outline-none focus:border-red-600 transition-all font-bold"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             required
@@ -77,7 +74,7 @@ const ProfileEdit: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
                     <button 
                         type="submit"
-                        disabled={loading || uploading}
+                        disabled={loading}
                         className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-xl transition-all active:scale-95 disabled:opacity-50 uppercase tracking-widest"
                     >
                         {loading ? 'Guardando...' : 'Guardar Cambios'}

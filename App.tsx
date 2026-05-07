@@ -9,6 +9,8 @@ import ContentUploadForm from './ContentUploadForm';
 import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
 import ProfileEdit from './ProfileEdit';
+import Footer from './src/components/Footer';
+import UniversalPlayer from './src/components/UniversalPlayer';
 import PosterImage from './src/components/PosterImage';
 import ShakaPlayer from './src/components/ShakaPlayer';
 import ProfileSelector from './ProfileSelector';
@@ -301,16 +303,33 @@ const VideoPlayer: React.FC<{
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const activeVideo = useMemo(() => {
-        const getUrl = (data: any) => {
+        const getData = (data: any) => {
+            let url = data.videoUrl || '';
             if (data.audioTracks && data.audioTracks[currentAudio]) {
-                return data.audioTracks[currentAudio];
+                url = data.audioTracks[currentAudio];
             }
-            return data.videoUrl || '';
+            
+            // Auto-detection as a fallback
+            let serverType = data.serverType;
+            if (!serverType) {
+                if (url.includes('streamtape.com')) serverType = 'streamtape';
+                else if (url.includes('ucarecdn.com')) serverType = 'uploadcare';
+                else serverType = 'uploadcare'; // Default
+            }
+
+            return { url, serverType };
         };
 
-        if (item.type === 'movie') return { url: getUrl(item), id: item.id };
+        if (item.type === 'movie') {
+            const data = getData(item);
+            return { ...data, id: item.id };
+        }
         const ep = episodes[currentEpIndex];
-        return ep ? { url: getUrl(ep), id: `${item.id}_${ep.id}` } : { url: '', id: '' };
+        if (ep) {
+            const data = getData(ep);
+            return { ...data, id: `${item.id}_${ep.id}` };
+        }
+        return { url: '', serverType: 'uploadcare', id: '' };
     }, [item, episodes, currentEpIndex, currentAudio]);
 
     // Refs for outside click detection
@@ -842,20 +861,12 @@ const VideoPlayer: React.FC<{
                         {/* Overlay to block YouTube interactions and show custom controls */}
                         <div className="absolute inset-0 pointer-events-none" />
                     </div>
-                ) : isEmbed ? (
-                    <iframe 
-                        src={processedUrl} 
-                        className="w-full h-full" 
-                        allowFullScreen 
-                        frameBorder="0"
-                        allow="autoplay; fullscreen"
-                    />
                 ) : (
-                    <ShakaPlayer 
-                        src={activeVideo.url} 
-                        className="w-full h-full"
-                        onClose={onClose}
+                    <UniversalPlayer 
+                        videoUrl={processedUrl} 
+                        serverType={activeVideo.serverType as any}
                         videoRef={videoRef}
+                        title={item.title}
                     />
                 )}
 
@@ -1154,7 +1165,7 @@ const ContentCard: React.FC<{
 };
 
 // --- COMPONENTE PRINCIPAL ---
-type Page = 'home' | 'movies' | 'series' | 'downloads';
+type Page = 'home' | 'movies' | 'series' | 'downloads' | 'fandubs' | 'comunidad';
 type Filter = 'all' | 'recent' | 'popular' | 'following' | 'ongoing';
 
 const MainApp: React.FC = () => {
@@ -1693,6 +1704,14 @@ const MainApp: React.FC = () => {
                 </div>
             </main>
 
+            <Footer onNavigate={(tab) => {
+                const validPages: Page[] = ['home', 'movies', 'series', 'downloads', 'fandubs', 'comunidad'];
+                if (validPages.includes(tab as any)) {
+                    setCurrentPage(tab as any);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            }} />
+
             {selectedVideo && (
                 <VideoPlayer 
                     item={selectedVideo} 
@@ -1707,7 +1726,7 @@ const MainApp: React.FC = () => {
             )}
             {isAdminOpen && <AdminPanel onClose={() => setIsAdminOpen(false)} />}
             {isUploadFormOpen && <ContentUploadForm onClose={() => setIsUploadFormOpen(false)} />}
-            {isProfileEditOpen && <ProfileEdit onClose={() => setIsProfileEditOpen(false)} />}
+            {isProfileEditOpen && <ProfileEdit activeProfile={activeProfile} onClose={() => setIsProfileEditOpen(false)} />}
             {showFeedback && currentProfile && <FeedbackToast userId={currentProfile.id} onClose={() => setShowFeedback(false)} />}
             <AiAssistant />
         </div>

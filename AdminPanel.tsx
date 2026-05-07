@@ -5,6 +5,7 @@ import { collection, addDoc, serverTimestamp as firestoreTimestamp, getDocs, que
 import { Content, Season } from './types';
 import { LANGUAGES } from './constants';
 import Uploader from './Uploader';
+import UniversalPlayer from './src/components/UniversalPlayer';
 
 const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [loading, setLoading] = useState(false);
@@ -14,6 +15,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [seasonsList, setSeasonsList] = useState<Season[]>([]);
     const [selectedSeriesId, setSelectedSeriesId] = useState('');
     const [selectedSeasonId, setSelectedSeasonId] = useState('');
+    const [showPreview, setShowPreview] = useState(false);
     
     const [formData, setFormData] = useState({
         title: '',
@@ -21,6 +23,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         thumbnailUrl: '',
         backdropUrl: '',
         videoUrl: '', // URL principal (fallback)
+        serverType: 'uploadcare' as 'uploadcare' | 'streamtape',
         audioTracks: [
             { lang: 'en', url: '' },
             { lang: 'es-419', url: '' }
@@ -80,16 +83,17 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 }
             });
 
-            if (type === 'episode') {
+                    if (type === 'episode') {
                 if (!selectedSeriesId) throw new Error("Debes seleccionar una serie");
                 if (!selectedSeasonId) throw new Error("Debes seleccionar una temporada");
                 
-                const episodesRef = collection(db, "content", selectedSeriesId, "temporadas", selectedSeasonId, "episodios");
+                const episodesRef = collection(db, "content", selectedSeriesId, "episodes"); // Updated path as per user request
                 await addDoc(episodesRef, {
                     title: formData.title,
                     description: formData.description,
                     thumbnailUrl: formData.thumbnailUrl,
                     videoUrl: formData.videoUrl,
+                    serverType: formData.serverType,
                     audioTracks: filteredTracks,
                     episodeNumber: Number(formData.episodeNumber),
                     duration: formData.duration,
@@ -115,6 +119,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     thumbnailUrl: formData.thumbnailUrl,
                     backdropUrl: formData.backdropUrl,
                     videoUrl: formData.videoUrl,
+                    serverType: formData.serverType,
                     audioTracks: filteredTracks,
                     type,
                     genre: formData.genre.split(',').map(g => g.trim()),
@@ -332,68 +337,132 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             </div>
 
                             {type !== 'series' && (
-                                <div className="space-y-4 animate-fade-in">
-                                    <div className="flex flex-col gap-2">
-                                        <label className="text-[10px] text-red-500 uppercase font-black tracking-widest">URL Video Principal (Fallback)</label>
-                                        <input 
-                                            className="w-full bg-white/5 border border-red-600/30 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs"
-                                            value={formData.videoUrl}
-                                            onChange={e => setFormData({...formData, videoUrl: e.target.value})}
-                                            placeholder="Ej: https://..."
-                                            required={type === 'episode'}
-                                        />
-                                    </div>
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] text-blue-400 uppercase font-black tracking-widest flex justify-between items-center">
-                                            Pistas de Audio
-                                            <button 
-                                                type="button"
-                                                onClick={() => setFormData({...formData, audioTracks: [...formData.audioTracks, { lang: 'en', url: '' }]})}
-                                                className="text-blue-400 hover:text-blue-300 text-[8px] border border-blue-400/30 px-2 py-1 rounded"
-                                            >
-                                                + Añadir Idioma
-                                            </button>
-                                        </label>
-                                        
-                                        {formData.audioTracks.map((track, index) => (
-                                            <div key={index} className="flex gap-2 animate-fade-in">
-                                                <select 
-                                                    className="bg-white/5 border border-white/10 p-2 rounded-lg text-white text-xs outline-none focus:border-blue-400 w-32"
-                                                    value={track.lang}
-                                                    onChange={e => {
-                                                        const newTracks = [...formData.audioTracks];
-                                                        newTracks[index].lang = e.target.value;
-                                                        setFormData({...formData, audioTracks: newTracks});
-                                                    }}
-                                                >
-                                                    {LANGUAGES.map(l => (
-                                                        <option key={l.code} value={l.code} className="bg-[#121212]">{l.name}</option>
-                                                    ))}
-                                                </select>
-                                                <input 
-                                                    className="flex-grow bg-white/5 border border-white/10 p-2 rounded-lg text-white focus:border-blue-400 outline-none transition-all text-xs"
-                                                    value={track.url}
-                                                    onChange={e => {
-                                                        const newTracks = [...formData.audioTracks];
-                                                        newTracks[index].url = e.target.value;
-                                                        setFormData({...formData, audioTracks: newTracks});
-                                                    }}
-                                                    placeholder="URL del video con este audio"
-                                                />
-                                                {formData.audioTracks.length > 1 && (
+                                <div className="space-y-4 animate-fade-in pt-4 border-t border-white/5">
+                                    <div className="space-y-6 pt-6 border-t border-white/5">
+                                        <div className="flex flex-col gap-4">
+                                            <div className="flex flex-col gap-3">
+                                                <label className="text-[10px] text-red-600 uppercase font-black tracking-widest flex items-center gap-2">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 shadow-[0_0_8px_rgba(255,0,0,0.8)]" />
+                                                    Servidor de Video
+                                                </label>
+                                                <div className="flex gap-4 p-1.5 bg-[#1a1a1a] rounded-xl border border-white/10 w-fit shadow-inner">
                                                     <button 
                                                         type="button"
-                                                        onClick={() => {
-                                                            const newTracks = formData.audioTracks.filter((_, i) => i !== index);
-                                                            setFormData({...formData, audioTracks: newTracks});
-                                                        }}
-                                                        className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                        onClick={() => setFormData({...formData, serverType: 'uploadcare'})}
+                                                        className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${formData.serverType === 'uploadcare' ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(255,0,0,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
                                                     >
-                                                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                                                        Uploadcare (CDN)
                                                     </button>
-                                                )}
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setFormData({...formData, serverType: 'streamtape'})}
+                                                        className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${formData.serverType === 'streamtape' ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(255,0,0,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
+                                                    >
+                                                        Streamtape (Embed)
+                                                    </button>
+                                                </div>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => {
+                                                        localStorage.clear();
+                                                        sessionStorage.clear();
+                                                        alert('Caché local limpiada. Recarga la página.');
+                                                    }}
+                                                    className="bg-transparent border border-red-600/50 hover:bg-red-600/10 text-red-500 text-[8px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-all"
+                                                >
+                                                    Forzar Refresco de Cache
+                                                </button>
                                             </div>
-                                        ))}
+
+                                            <div className="flex flex-col gap-3">
+                                                <label className="text-[10px] text-red-600 uppercase font-black tracking-widest flex items-center gap-2">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 shadow-[0_0_8px_rgba(255,0,0,0.8)]" />
+                                                    {formData.serverType === 'uploadcare' ? 'URL de CDN (Video Directo)' : 'URL o Código Embed'}
+                                                </label>
+                                                <div className="flex gap-3">
+                                                    <input 
+                                                        className="flex-grow bg-[#1a1a1a] border border-white/10 p-4 rounded-xl text-white focus:border-red-600 focus:ring-1 focus:ring-red-600/50 outline-none transition-all text-xs placeholder:text-gray-600 shadow-inner"
+                                                        value={formData.videoUrl}
+                                                        onChange={e => setFormData({...formData, videoUrl: e.target.value})}
+                                                        placeholder={formData.serverType === 'uploadcare' ? "Ej: https://ucarecdn.com/..." : "Ej: https://streamtape.com/e/..."}
+                                                        required={type === 'episode'}
+                                                    />
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setShowPreview(!showPreview)}
+                                                        className={`px-6 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-300 border ${showPreview ? 'bg-red-600 border-red-600 text-white shadow-[0_0_20px_rgba(255,0,0,0.5)]' : 'border-red-600/30 text-red-500 hover:bg-red-600/10'}`}
+                                                    >
+                                                        {showPreview ? 'Ocultar' : 'Probar'}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {showPreview && formData.videoUrl && (
+                                                <div className="mt-4 animate-scale-in p-2 bg-black rounded-2xl border border-red-600/20 shadow-[0_0_30px_rgba(255,0,0,0.1)]">
+                                                    <UniversalPlayer 
+                                                        videoUrl={formData.videoUrl} 
+                                                        serverType={formData.serverType}
+                                                        title="Previsualización"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-4 pt-6 border-t border-white/5">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <label className="text-[10px] text-red-600 uppercase font-black tracking-widest flex items-center gap-2">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 shadow-[0_0_8px_rgba(255,0,0,0.8)]" />
+                                                    Pistas de Audio (Multi-Audio)
+                                                </label>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => setFormData({...formData, audioTracks: [...formData.audioTracks, { lang: 'en', url: '' }]})}
+                                                    className="bg-[#1a1a1a] border border-white/10 hover:border-red-600 text-[10px] font-bold text-gray-400 hover:text-red-600 px-4 py-2 rounded-lg transition-all uppercase tracking-widest flex items-center gap-2"
+                                                >
+                                                    <span className="text-sm">+</span> Añadir Idioma
+                                                </button>
+                                            </div>
+                                            
+                                            <div className="space-y-3">
+                                                {formData.audioTracks.map((track, index) => (
+                                                    <div key={index} className="flex gap-3 animate-fade-in group">
+                                                        <select 
+                                                            className="bg-[#1a1a1a] border border-white/10 p-3 rounded-xl text-white text-xs outline-none focus:border-red-600 transition-all w-48 shadow-inner"
+                                                            value={track.lang}
+                                                            onChange={e => {
+                                                                const newTracks = [...formData.audioTracks];
+                                                                newTracks[index].lang = e.target.value;
+                                                                setFormData({...formData, audioTracks: newTracks});
+                                                            }}
+                                                        >
+                                                            {LANGUAGES.map(l => (
+                                                                <option key={l.code} value={l.code} className="bg-[#121212]">{l.name}</option>
+                                                            ))}
+                                                        </select>
+                                                        <input 
+                                                            className="flex-grow bg-[#1a1a1a] border border-white/10 p-3 rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs placeholder:text-gray-600 shadow-inner"
+                                                            value={track.url}
+                                                            onChange={e => {
+                                                                const newTracks = [...formData.audioTracks];
+                                                                newTracks[index].url = e.target.value;
+                                                                setFormData({...formData, audioTracks: newTracks});
+                                                            }}
+                                                            placeholder="URL del video con este audio"
+                                                        />
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newTracks = formData.audioTracks.filter((_, i) => i !== index);
+                                                                setFormData({...formData, audioTracks: newTracks});
+                                                            }}
+                                                            className="p-3 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20"
+                                                        >
+                                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}
