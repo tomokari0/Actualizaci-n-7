@@ -10,7 +10,7 @@ import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
 import ProfileEdit from './ProfileEdit';
 import Footer from './src/components/Footer';
-import UniversalPlayer from './src/components/UniversalPlayer';
+import SeikoMediaEngine from './src/components/SeikoMediaEngine';
 import PosterImage from './src/components/PosterImage';
 import ShakaPlayer from './src/components/ShakaPlayer';
 import ProfileSelector from './ProfileSelector';
@@ -317,7 +317,11 @@ const VideoPlayer: React.FC<{
                 else serverType = 'uploadcare'; // Default
             }
 
-            return { url, serverType };
+            return { 
+                url, 
+                serverType: data.serverType || 'uploadcare',
+                embedCode: data.embedCode
+            };
         };
 
         if (item.type === 'movie') {
@@ -329,7 +333,7 @@ const VideoPlayer: React.FC<{
             const data = getData(ep);
             return { ...data, id: `${item.id}_${ep.id}` };
         }
-        return { url: '', serverType: 'uploadcare', id: '' };
+        return { url: '', serverType: 'uploadcare', id: '', embedCode: '' };
     }, [item, episodes, currentEpIndex, currentAudio]);
 
     // Refs for outside click detection
@@ -862,9 +866,10 @@ const VideoPlayer: React.FC<{
                         <div className="absolute inset-0 pointer-events-none" />
                     </div>
                 ) : (
-                    <UniversalPlayer 
-                        videoUrl={processedUrl} 
+                    <SeikoMediaEngine 
+                        videoUrl={activeVideo.url} 
                         serverType={activeVideo.serverType as any}
+                        embedCode={activeVideo.embedCode}
                         videoRef={videoRef}
                         title={item.title}
                     />

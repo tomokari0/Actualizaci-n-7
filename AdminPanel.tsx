@@ -5,7 +5,7 @@ import { collection, addDoc, serverTimestamp as firestoreTimestamp, getDocs, que
 import { Content, Season } from './types';
 import { LANGUAGES } from './constants';
 import Uploader from './Uploader';
-import UniversalPlayer from './src/components/UniversalPlayer';
+import SeikoMediaEngine from './src/components/SeikoMediaEngine';
 
 const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [loading, setLoading] = useState(false);
@@ -23,7 +23,8 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         thumbnailUrl: '',
         backdropUrl: '',
         videoUrl: '', // URL principal (fallback)
-        serverType: 'uploadcare' as 'uploadcare' | 'streamtape',
+        embedCode: '',
+        serverType: 'uploadcare' as 'uploadcare' | 'streamtape' | 'savefiles' | 'embed',
         audioTracks: [
             { lang: 'en', url: '' },
             { lang: 'es-419', url: '' }
@@ -93,6 +94,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     description: formData.description,
                     thumbnailUrl: formData.thumbnailUrl,
                     videoUrl: formData.videoUrl,
+                    embedCode: formData.embedCode,
                     serverType: formData.serverType,
                     audioTracks: filteredTracks,
                     episodeNumber: Number(formData.episodeNumber),
@@ -119,6 +121,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     thumbnailUrl: formData.thumbnailUrl,
                     backdropUrl: formData.backdropUrl,
                     videoUrl: formData.videoUrl,
+                    embedCode: formData.embedCode,
                     serverType: formData.serverType,
                     audioTracks: filteredTracks,
                     type,
@@ -358,7 +361,21 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                                         onClick={() => setFormData({...formData, serverType: 'streamtape'})}
                                                         className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${formData.serverType === 'streamtape' ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(255,0,0,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
                                                     >
-                                                        Streamtape (Embed)
+                                                        Streamtape
+                                                    </button>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setFormData({...formData, serverType: 'savefiles'})}
+                                                        className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${formData.serverType === 'savefiles' ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(255,0,0,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
+                                                    >
+                                                        Savefiles
+                                                    </button>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setFormData({...formData, serverType: 'embed'})}
+                                                        className={`px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all duration-300 ${formData.serverType === 'embed' ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(255,0,0,0.4)]' : 'text-gray-500 hover:text-gray-300'}`}
+                                                    >
+                                                        Código Embed
                                                     </button>
                                                 </div>
                                                 <button 
@@ -377,31 +394,43 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                             <div className="flex flex-col gap-3">
                                                 <label className="text-[10px] text-red-600 uppercase font-black tracking-widest flex items-center gap-2">
                                                     <span className="w-1.5 h-1.5 rounded-full bg-red-600 shadow-[0_0_8px_rgba(255,0,0,0.8)]" />
-                                                    {formData.serverType === 'uploadcare' ? 'URL de CDN (Video Directo)' : 'URL o Código Embed'}
+                                                    {formData.serverType === 'embed' ? 'Código <iframe> del Proveedor' : 'URL de Video (Directo o Link de Versión Embed)'}
                                                 </label>
-                                                <div className="flex gap-3">
-                                                    <input 
-                                                        className="flex-grow bg-[#1a1a1a] border border-white/10 p-4 rounded-xl text-white focus:border-red-600 focus:ring-1 focus:ring-red-600/50 outline-none transition-all text-xs placeholder:text-gray-600 shadow-inner"
-                                                        value={formData.videoUrl}
-                                                        onChange={e => setFormData({...formData, videoUrl: e.target.value})}
-                                                        placeholder={formData.serverType === 'uploadcare' ? "Ej: https://ucarecdn.com/..." : "Ej: https://streamtape.com/e/..."}
-                                                        required={type === 'episode'}
-                                                    />
+                                                <div className="flex flex-col gap-3">
+                                                    {formData.serverType === 'embed' ? (
+                                                        <textarea 
+                                                            className="w-full bg-[#1a1a1a] border border-white/10 p-4 rounded-xl text-white focus:border-red-600 focus:ring-1 focus:ring-red-600/50 outline-none transition-all text-xs placeholder:text-gray-600 shadow-inner h-32 resize-none"
+                                                            value={formData.embedCode}
+                                                            onChange={e => setFormData({...formData, embedCode: e.target.value})}
+                                                            placeholder='Pegue aquí el código completo <iframe src="..." ...></iframe>'
+                                                            required={formData.serverType === 'embed'}
+                                                        />
+                                                    ) : (
+                                                        <input 
+                                                            className="flex-grow bg-[#1a1a1a] border border-white/10 p-4 rounded-xl text-white focus:border-red-600 focus:ring-1 focus:ring-red-600/50 outline-none transition-all text-xs placeholder:text-gray-600 shadow-inner"
+                                                            value={formData.videoUrl}
+                                                            onChange={e => setFormData({...formData, videoUrl: e.target.value})}
+                                                            placeholder={formData.serverType === 'uploadcare' ? "Ej: https://ucarecdn.com/..." : "Ej: https://streamtape.com/e/..."}
+                                                            required={type === 'episode'}
+                                                        />
+                                                    )}
+                                                    
                                                     <button 
                                                         type="button"
                                                         onClick={() => setShowPreview(!showPreview)}
-                                                        className={`px-6 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all duration-300 border ${showPreview ? 'bg-red-600 border-red-600 text-white shadow-[0_0_20px_rgba(255,0,0,0.5)]' : 'border-red-600/30 text-red-500 hover:bg-red-600/10'}`}
+                                                        className={`w-full py-4 rounded-xl text-[10px] font-black uppercase tracking-[0.4em] transition-all duration-300 border ${showPreview ? 'bg-red-600 border-red-600 text-white shadow-[0_0_20px_rgba(255,0,0,0.5)]' : 'border-red-600/30 text-red-500 hover:bg-red-600/10'}`}
                                                     >
-                                                        {showPreview ? 'Ocultar' : 'Probar'}
+                                                        {showPreview ? 'OCULTAR PREVISUALIZACIÓN' : 'PROBAR REPRODUCTOR'}
                                                     </button>
                                                 </div>
                                             </div>
 
-                                            {showPreview && formData.videoUrl && (
+                                            {showPreview && (formData.videoUrl || formData.embedCode) && (
                                                 <div className="mt-4 animate-scale-in p-2 bg-black rounded-2xl border border-red-600/20 shadow-[0_0_30px_rgba(255,0,0,0.1)]">
-                                                    <UniversalPlayer 
+                                                    <SeikoMediaEngine 
                                                         videoUrl={formData.videoUrl} 
                                                         serverType={formData.serverType}
+                                                        embedCode={formData.embedCode}
                                                         title="Previsualización"
                                                     />
                                                 </div>
