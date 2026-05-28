@@ -16,6 +16,8 @@ import ShakaPlayer from './src/components/ShakaPlayer';
 import ProfileSelector from './ProfileSelector';
 import AiAssistant from './src/components/AiAssistant';
 import { useMemoryCleanup } from './src/hooks/useMemoryCleanup';
+import AdBlock from './src/components/AdBlock';
+import AdSenseScript from './src/components/AdSenseScript';
 
 declare global {
   interface Window {
@@ -1005,12 +1007,20 @@ const VideoPlayer: React.FC<{
 
             {/* MENÚ DE EPISODIOS (Lateral deslizable) */}
             <div className={`fixed right-0 top-0 bottom-0 w-full sm:w-80 bg-black/95 backdrop-blur-xl border-l border-white/10 z-[210] transition-transform duration-500 shadow-2xl p-6 overflow-y-auto ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-                <div className="flex justify-between items-center mb-8 border-b border-white/10 pb-4">
+                <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
                     <h3 className="font-bebas text-2xl text-red-500 tracking-wider">Episodios</h3>
                     <button onClick={() => setIsMenuOpen(false)} className="text-gray-400 hover:text-white">
                         <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                     </button>
                 </div>
+
+                {/* Sidebar Ad: Anuncio vertical al lado de la lista de episodios */}
+                <AdBlock 
+                    type="sidebar" 
+                    slot="3091845620" 
+                    minHeightClass="min-h-[250px] mb-6" 
+                    label="Publicidad" 
+                />
                 
                 <div className="space-y-4">
                     {episodes.map((ep, idx) => {
@@ -1019,7 +1029,7 @@ const VideoPlayer: React.FC<{
 
                         return (
                             <div 
-                                key={ep.id}
+                                key={`${ep.id}-${idx}`}
                                 onClick={() => { setCurrentEpIndex(idx); setIsMenuOpen(false); }}
                                 className={`group cursor-pointer p-3 rounded-lg border transition-all ${currentEpIndex === idx ? 'bg-red-600/20 border-red-600' : 'bg-white/5 border-transparent hover:border-white/20'}`}
                             >
@@ -1223,6 +1233,47 @@ const MainApp: React.FC = () => {
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
     const [showInstallButton, setShowInstallButton] = useState(false);
 
+    // Comunidad (Community) Feed Local States
+    const [communityPosts, setCommunityPosts] = useState([
+        {
+            id: 1,
+            authorName: 'Seiko Gacha Studio 🎬',
+            authorAvatar: 'https://59m37zkauy.ucarecd.net/6449ac81-e76b-4b61-bddb-52b4d8f8a27f/AirbrushIMAGEENHANCER177165941446117716594144612.jpg',
+            time: 'Hace 2 horas',
+            content: '🔥 ¡NUEVO ESTRENO GACHA! Se viene el capitulo piloto de nuestra serie animada "La Leyenda del Prisma". ¿Quién está listo para el FanDub en español? Dejen sus expectativas y sugerencias de dobladores en los comentarios. 👇✨',
+            image: 'https://images.unsplash.com/photo-1627856013091-fed6e4e30025?w=500&auto=format&fit=crop&q=80',
+            likes: 124,
+            hasLiked: false,
+            commentsCount: 32,
+            category: 'Anuncio'
+        },
+        {
+            id: 2,
+            authorName: 'Yuki_Fandub24 🎙️',
+            authorAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80',
+            time: 'Hace 5 horas',
+            content: '🎙️ ¡Hola a todos! He re-doblado el trailer de la película de Seiko Gacha con voz en español latino utilizando micrófonos profesionales. ¿Les gustaría que suba el detrás de escenas de cómo edito mis audios y masterizo en SeikoYT?',
+            likes: 76,
+            hasLiked: false,
+            commentsCount: 15,
+            category: 'FanDub'
+        },
+        {
+            id: 3,
+            authorName: 'Gacha_Creator_Pro 🌸',
+            authorAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+            time: 'Hace 1 día',
+            content: '🎨 Compartiendo algunos de estos hermosos fanart recolor de Seiko hechos en Clip Studio Paint. ¡Espero que les gusten mucho!',
+            image: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=500&auto=format&fit=crop&q=80',
+            likes: 215,
+            hasLiked: false,
+            commentsCount: 43,
+            category: 'FanArt'
+        }
+    ]);
+    const [newPostText, setNewPostText] = useState('');
+    const [communityFilter, setCommunityFilter] = useState('Todos');
+
     useEffect(() => {
         const handleBeforeInstallPrompt = (e: any) => {
             e.preventDefault();
@@ -1419,14 +1470,14 @@ const MainApp: React.FC = () => {
                     >
                         SEIKOTV
                     </h1>
-                    <nav className="hidden md:flex gap-8">
-                        {['home', 'movies', 'series', 'downloads'].map(p => (
+                    <nav className="hidden md:flex gap-6 lg:gap-8">
+                        {['home', 'movies', 'series', 'fandubs', 'comunidad', 'downloads'].map(p => (
                             <button 
                                 key={p} 
                                 onClick={() => { setCurrentPage(p as Page); setSearchResults([]); }} 
-                                className={`text-[12px] font-bold uppercase tracking-[0.3em] transition-all hover:text-red-500 ${currentPage === p && searchResults.length === 0 ? 'text-red-500 border-b-2 border-red-500' : 'text-gray-400'}`}
+                                className={`text-[11px] lg:text-[12px] font-bold uppercase tracking-[0.2em] lg:tracking-[0.3em] transition-all hover:text-red-500 ${currentPage === p && searchResults.length === 0 ? 'text-red-500 border-b-2 border-red-500' : 'text-gray-400'}`}
                             >
-                                {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : 'Descargas'}
+                                {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : p === 'fandubs' ? 'FanDubs' : p === 'comunidad' ? 'Comunidad' : 'Descargas'}
                             </button>
                         ))}
                     </nav>
@@ -1514,13 +1565,13 @@ const MainApp: React.FC = () => {
             {/* Mobile Menu Overlay */}
             <div className={`fixed inset-0 bg-black/95 z-[60] transition-all duration-500 md:hidden ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
                 <div className="flex flex-col items-center justify-center h-full gap-8">
-                    {['home', 'movies', 'series', 'downloads'].map(p => (
+                    {['home', 'movies', 'series', 'fandubs', 'comunidad', 'downloads'].map(p => (
                         <button 
                             key={p} 
                             onClick={() => { setCurrentPage(p as Page); setIsMobileMenuOpen(false); setSearchResults([]); }} 
                             className={`text-4xl font-bebas tracking-[0.2em] transition-all ${currentPage === p ? 'text-red-500' : 'text-gray-400'}`}
                         >
-                            {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : 'Mis Descargas'}
+                            {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : p === 'fandubs' ? 'FanDubs' : p === 'comunidad' ? 'Comunidad' : 'Descargas'}
                         </button>
                     ))}
                     <button 
@@ -1570,9 +1621,17 @@ const MainApp: React.FC = () => {
                     </div>
                 )}
 
-                <div className="px-4 md:px-24 pb-24">
+                <div className={`px-4 md:px-24 pb-24 ${currentPage !== 'home' ? 'pt-24 md:pt-32' : ''}`}>
+                    {/* Banner Superior (Leaderboard) - CLS Safe Dark Mode Container */}
+                    <AdBlock 
+                        type="leaderboard" 
+                        slot="1084792643" 
+                        minHeightClass="min-h-[100px] mb-8" 
+                        label="Publicidad" 
+                    />
+
                     {currentPage === 'downloads' ? (
-                        <div className="animate-fade-in pt-24 md:pt-32">
+                        <div className="animate-fade-in">
                             <h3 className="text-2xl md:text-5xl font-bebas text-white tracking-[0.2em] uppercase border-l-4 md:border-l-8 border-red-600 pl-4 md:pl-6 mb-12">
                                 Mis Descargas
                             </h3>
@@ -1586,12 +1645,12 @@ const MainApp: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-                                    {downloadedUrls.map(url => {
+                                    {downloadedUrls.map((url, idx) => {
                                         const metadata = JSON.parse(localStorage.getItem('seikotv_downloads_metadata') || '{}')[url];
                                         if (!metadata) return null;
                                         
                                         return (
-                                            <div key={url} className="group relative bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-red-600/50 transition-all shadow-2xl">
+                                            <div key={`${url}-${idx}`} className="group relative bg-white/5 border border-white/10 rounded-2xl overflow-hidden hover:border-red-600/50 transition-all shadow-2xl">
                                                 <div className="relative aspect-video">
                                                     <img src={metadata.thumbnailUrl} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                                                     <button 
@@ -1636,6 +1695,171 @@ const MainApp: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+                    ) : currentPage === 'comunidad' ? (
+                        <div className="animate-fade-in space-y-8 max-w-4xl mx-auto pt-4">
+                            <div className="flex items-center gap-3 border-l-4 md:border-l-8 border-red-600 pl-4 md:pl-6 mb-8">
+                                <h3 className="text-2xl md:text-5xl font-bebas text-white tracking-[0.2em] uppercase">
+                                    Comunidad SeikoYT
+                                </h3>
+                                <span className="bg-red-600/20 text-red-500 border border-red-600/30 text-[10px] px-3 py-1 rounded-full uppercase font-black tracking-widest animate-pulse">
+                                    Live Channel
+                                </span>
+                            </div>
+                            
+                            {/* Filter Bar */}
+                            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                                {['Todos', 'Anuncios', 'FanDubs', 'FanArts', 'General'].map(cat => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setCommunityFilter(cat)}
+                                        className={`px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${
+                                            (cat === 'Todos' && communityFilter === 'Todos') || 
+                                            (cat === 'Anuncios' && communityFilter === 'Anuncio') ||
+                                            (cat === 'FanDubs' && communityFilter === 'FanDub') ||
+                                            (cat === 'FanArts' && communityFilter === 'FanArt') ||
+                                            (cat === 'General' && communityFilter === 'General')
+                                                ? 'bg-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] border-transparent'
+                                                : 'bg-[#121212]/50 border border-white/5 text-gray-400 hover:text-white hover:border-white/20'
+                                        }`}
+                                    >
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Create Post Block */}
+                            <div className="bg-[#121212] border border-white/5 rounded-2xl p-6 shadow-xl space-y-4">
+                                <div className="flex gap-3 items-start">
+                                    <img src={activeProfile?.avatar} className="w-12 h-12 rounded-xl object-cover border border-white/10" />
+                                    <textarea
+                                        value={newPostText}
+                                        onChange={(e) => setNewPostText(e.target.value)}
+                                        placeholder="Comparte un comentario, FanDub, o edit de Gacha con la comunidad SeikoYT..."
+                                        className="flex-grow bg-[#0c0c0c] border border-white/5 rounded-xl p-4 text-xs md:text-sm text-white focus:outline-none focus:border-red-600 focus:bg-[#121212] transition-all resize-none h-24 placeholder:text-gray-600"
+                                    />
+                                </div>
+                                <div className="flex justify-between items-center pt-2">
+                                    <span className="text-[10px] text-gray-500 uppercase tracking-widest font-mono">
+                                        Publicando como: <strong className="text-gray-300 font-bold">{activeProfile?.name}</strong>
+                                    </span>
+                                    <button 
+                                        onClick={() => {
+                                            if (!newPostText.trim()) return;
+                                            const newPost = {
+                                                id: Date.now(),
+                                                authorName: activeProfile?.name || 'Seiko Gacha-Fan',
+                                                authorAvatar: activeProfile?.avatar || 'https://59m37zkauy.ucarecd.net/6449ac81-e76b-4b61-bddb-52b4d8f8a27f/AirbrushIMAGEENHANCER177165941446117716594144612.jpg',
+                                                time: 'Ahora mismo',
+                                                content: newPostText,
+                                                image: undefined,
+                                                likes: 0,
+                                                hasLiked: false,
+                                                commentsCount: 0,
+                                                category: 'General'
+                                            };
+                                            setCommunityPosts([newPost, ...communityPosts]);
+                                            setNewPostText('');
+                                        }}
+                                        disabled={!newPostText.trim()}
+                                        className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                                            newPostText.trim() 
+                                                ? 'bg-red-600 hover:bg-red-700 text-white shadow-[0_0_15px_rgba(239,68,68,0.4)] cursor-pointer' 
+                                                : 'bg-white/5 border border-white/10 text-gray-600 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        Publicar
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Feed List with In-Feed Ad layout */}
+                            <div className="space-y-6">
+                                {communityPosts
+                                    .filter(post => communityFilter === 'Todos' || post.category === communityFilter)
+                                    .map((post, index) => (
+                                        <React.Fragment key={post.id}>
+                                            <div className="bg-[#121212]/50 border border-white/5 rounded-2xl p-6 hover:border-red-600/30 transition-all duration-300 shadow-xl space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-3">
+                                                        <img src={post.authorAvatar} className="w-11 h-11 rounded-full object-cover border border-white/10" />
+                                                        <div>
+                                                            <div className="flex items-center gap-2">
+                                                                <h4 className="font-bold text-white text-sm">{post.authorName}</h4>
+                                                                <span className="bg-red-600/10 text-red-500 border border-red-500/20 text-[9px] px-2 py-0.5 rounded uppercase font-black tracking-widest">
+                                                                    {post.category}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[10px] text-gray-500 font-medium">{post.time}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <p className="text-gray-300 text-xs md:text-sm leading-relaxed whitespace-pre-wrap">{post.content}</p>
+
+                                                {post.image && (
+                                                    <div className="rounded-xl overflow-hidden border border-white/10 aspect-video md:aspect-[21/9]">
+                                                        <img src={post.image} className="w-full h-full object-cover opacity-90 hover:opacity-100 transition-opacity" />
+                                                    </div>
+                                                )}
+
+                                                <div className="flex items-center gap-6 pt-4 border-t border-white/5 text-gray-500">
+                                                    <button 
+                                                        onClick={() => {
+                                                            setCommunityPosts(communityPosts.map(p => 
+                                                                p.id === post.id 
+                                                                    ? { ...p, likes: p.hasLiked ? p.likes - 1 : p.likes + 1, hasLiked: !p.hasLiked }
+                                                                    : p
+                                                            ));
+                                                        }}
+                                                        className={`flex items-center gap-2 text-xs font-bold transition-colors ${post.hasLiked ? 'text-red-500' : 'hover:text-white'}`}
+                                                    >
+                                                        <svg className={`w-5 h-5 ${post.hasLiked ? 'fill-current' : 'fill-none stroke-current'}`} strokeWidth="2" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                                                        <span className="font-mono">{post.likes}</span>
+                                                    </button>
+                                                    <button className="flex items-center gap-2 text-xs font-bold hover:text-white transition-colors">
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                                                        <span className="font-mono">{post.commentsCount}</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Inject Google AdSense In-Feed Ad in Dark Mode below the second post */}
+                                            {index === 1 && (
+                                                <AdBlock 
+                                                    type="in-feed" 
+                                                    slot="4839027156" 
+                                                    minHeightClass="min-h-[160px]" 
+                                                    label="Publicidad Recomendada" 
+                                                />
+                                            )}
+                                        </React.Fragment>
+                                    ))}
+                            </div>
+                        </div>
+                    ) : currentPage === 'fandubs' ? (
+                        <div className="animate-fade-in pt-4">
+                            <h3 className="text-2xl md:text-5xl font-bebas text-white tracking-[0.2em] uppercase border-l-4 md:border-l-8 border-red-600 pl-4 md:pl-6 mb-12">
+                                Gacha FanDubs & Doblajes
+                            </h3>
+                            <p className="text-gray-400 text-sm mb-12 max-w-2xl leading-relaxed">
+                                Bienvenido al rincón del doblaje de SeikoYT. Explora series y cortometrajes doblados por la comunidad de actores de voz independientes.
+                            </p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-8">
+                                {contentList.filter(item => item.genre.some(g => g.toLowerCase().includes('doblaje') || g.toLowerCase().includes('dub') || g.toLowerCase().includes('gacha') || g.toLowerCase().includes('fandub'))).map((item, idx) => {
+                                    const progressKey = item.type === 'movie' ? item.id : `${item.id}_${item.seasons?.[0]?.episodes?.[0]?.id || ''}`;
+                                    const progress = watchProgress[progressKey];
+                                    
+                                    return (
+                                        <ContentCard 
+                                            key={`${item.id}-fd-${idx}`} 
+                                            item={item} 
+                                            onPlay={() => setSelectedVideo(item)} 
+                                            progress={progress ? (progress.currentTime / progress.duration) * 100 : undefined} 
+                                        />
+                                    );
+                                })}
+                            </div>
+                        </div>
                     ) : (
                         <>
                             {searchResults.length > 0 && (
@@ -1652,9 +1876,9 @@ const MainApp: React.FC = () => {
                                 </button>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-8">
-                                {searchResults.map(item => (
+                                {searchResults.map((item, idx) => (
                                     <ContentCard 
-                                        key={item.id} 
+                                        key={`${item.id || 'search'}-${idx}`} 
                                         item={item} 
                                         onPlay={() => setSelectedVideo(item)} 
                                     />
@@ -1689,14 +1913,14 @@ const MainApp: React.FC = () => {
                     </div>
 
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-8">
-                        {filteredContent.map(item => {
+                        {filteredContent.map((item, idx) => {
                             // Si es serie, mostramos el progreso del primer capítulo como referencia general
                             const progressKey = item.type === 'movie' ? item.id : `${item.id}_${item.seasons?.[0]?.episodes?.[0]?.id || ''}`;
                             const progress = watchProgress[progressKey];
                             
                             return (
                                 <ContentCard 
-                                    key={item.id} 
+                                    key={`${item.id}-${idx}`} 
                                     item={item} 
                                     onPlay={() => setSelectedVideo(item)} 
                                     progress={progress ? (progress.currentTime / progress.duration) * 100 : undefined} 
@@ -1742,6 +1966,7 @@ const App: React.FC = () => (
     <AuthProvider>
         <LanguageProvider>
             <UserHistoryProvider>
+                <AdSenseScript />
                 <MainApp />
             </UserHistoryProvider>
         </LanguageProvider>
