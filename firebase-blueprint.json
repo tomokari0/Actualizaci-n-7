@@ -54,6 +54,18 @@
         "duration": { "type": "string" }
       }
     },
+    "CastMember": {
+      "title": "Cast and Crew Member",
+      "description": "A cast or crew member of a movie or series.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "character": { "type": "string" },
+        "avatar": { "type": "string" }
+      },
+      "required": ["name", "role"]
+    },
     "Feedback": {
       "title": "User Feedback",
       "description": "Ratings and feedback provided by users.",
@@ -82,6 +94,10 @@
     "/content/{contentId}/episodes/{episodeId}": {
       "schema": "Episode",
       "description": "Series episodes"
+    },
+    "/content/{contentId}/cast/{castId}": {
+      "schema": "CastMember",
+      "description": "Cast and crew members of the film or series"
     },
     "/feedback/{feedbackId}": {
       "schema": "Feedback",

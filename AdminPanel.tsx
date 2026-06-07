@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from './firebaseConfig';
-import { collection, addDoc, serverTimestamp as firestoreTimestamp, getDocs, query, where, orderBy } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp as firestoreTimestamp, getDocs, query, where, orderBy, deleteDoc, doc } from "firebase/firestore";
 import { Content, Season } from './types';
 import { LANGUAGES } from './constants';
 import Uploader from './Uploader';
@@ -10,13 +10,25 @@ import SeikoMediaEngine from './src/components/SeikoMediaEngine';
 const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [type, setType] = useState<'movie' | 'series' | 'season' | 'episode'>('movie');
+    const [type, setType] = useState<'movie' | 'series' | 'season' | 'episode' | 'cast'>('movie');
     const [seriesList, setSeriesList] = useState<Content[]>([]);
     const [seasonsList, setSeasonsList] = useState<Season[]>([]);
     const [selectedSeriesId, setSelectedSeriesId] = useState('');
     const [selectedSeasonId, setSelectedSeasonId] = useState('');
     const [showPreview, setShowPreview] = useState(false);
     
+    // Cast members management
+    const [allContentList, setAllContentList] = useState<Content[]>([]);
+    const [selectedContentId, setSelectedContentId] = useState('');
+    const [castList, setCastList] = useState<any[]>([]);
+    const [loadingCastList, setLoadingCastList] = useState(false);
+    const [castForm, setCastForm] = useState({
+        name: '',
+        role: '',
+        character: '',
+        avatar: ''
+    });
+
     const [formData, setFormData] = useState({
         title: '',
         description: '',
@@ -51,7 +63,103 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             };
             fetchSeries();
         }
+        if (type === 'cast') {
+            const fetchAllContent = async () => {
+                try {
+                    const snap = await getDocs(collection(db, "content"));
+                    setAllContentList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Content)));
+                } catch (err) {
+                    console.error("Error fetching all content:", err);
+                }
+            };
+            fetchAllContent();
+        }
     }, [type]);
+
+    useEffect(() => {
+        if (type === 'cast' && selectedContentId) {
+            const fetchCastList = async () => {
+                setLoadingCastList(true);
+                try {
+                    const castRef = collection(db, "content", selectedContentId, "cast");
+                    const snap = await getDocs(castRef);
+                    setCastList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                } catch (err) {
+                    console.error("Error fetching cast list:", err);
+                } finally {
+                    setLoadingCastList(false);
+                }
+            };
+            fetchCastList();
+        } else {
+            setCastList([]);
+        }
+    }, [type, selectedContentId]);
+
+    const handleAddCastMember = async () => {
+        if (!selectedContentId) return;
+        if (!castForm.name.trim()) {
+            setError("El nombre es obligatorio.");
+            return;
+        }
+        if (!castForm.role.trim()) {
+            setError("El rol es obligatorio.");
+            return;
+        }
+
+        setLoading(true);
+        setError(null);
+        try {
+            const castRef = collection(db, "content", selectedContentId, "cast");
+            await addDoc(castRef, {
+                name: castForm.name,
+                role: castForm.role,
+                character: castForm.character || null,
+                avatar: castForm.avatar || null,
+                createdAt: firestoreTimestamp()
+            });
+
+            // Reset form fields
+            setCastForm({
+                name: '',
+                role: '',
+                character: '',
+                avatar: ''
+            });
+
+            // Refetch list
+            const snap = await getDocs(castRef);
+            setCastList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            
+            alert("¡Miembro del reparto añadido con éxito! 🎙️");
+        } catch (err: any) {
+            console.error("Error adding cast member:", err);
+            setError(err.message || "Error al guardar el miembro del reparto.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteCastMember = async (memberId: string) => {
+        if (!selectedContentId) return;
+        if (!window.confirm("¿Seguro que deseas eliminar este miembro del reparto?")) return;
+
+        setLoadingCastList(true);
+        try {
+            const docRef = doc(db, "content", selectedContentId, "cast", memberId);
+            await deleteDoc(docRef);
+
+            // Refetch list
+            const castRef = collection(db, "content", selectedContentId, "cast");
+            const snap = await getDocs(castRef);
+            setCastList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        } catch (err: any) {
+            console.error("Error deleting cast member:", err);
+            alert("Error al eliminar el miembro: " + err.message);
+        } finally {
+            setLoadingCastList(false);
+        }
+    };
 
     useEffect(() => {
         if (type === 'episode' && selectedSeriesId) {
@@ -163,9 +271,8 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-2">Cerrar</button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-5">
-                <div className="flex gap-2 mb-6 md:mb-8">
-                    {['movie', 'series', 'season', 'episode'].map((t) => (
+                <div className="flex gap-2 mb-6 md:mb-8 flex-wrap">
+                    {['movie', 'series', 'season', 'episode', 'cast'].map((t) => (
                         <button 
                             key={t}
                             type="button"
@@ -173,12 +280,147 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 setType(t as any);
                                 setError(null);
                             }}
-                            className={`flex-1 py-2 md:py-3 rounded-lg md:rounded-xl font-bold transition-all text-[8px] md:text-[10px] tracking-widest uppercase ${type === t ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
+                            className={`flex-1 min-w-[70px] py-2 md:py-3 rounded-lg md:rounded-xl font-bold transition-all text-[8px] md:text-[10px] tracking-widest uppercase ${type === t ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
                         >
-                            {t === 'movie' ? 'Película' : t === 'series' ? 'Serie' : t === 'season' ? 'Temporada' : 'Episodio'}
+                            {t === 'movie' ? 'Película' : t === 'series' ? 'Serie' : t === 'season' ? 'Temporada' : t === 'episode' ? 'Episodio' : 'Reparto'}
                         </button>
                     ))}
                 </div>
+
+                {type === 'cast' ? (
+                    <div className="space-y-6 animate-fade-in text-left">
+                        <div className="flex flex-col gap-2">
+                            <label className="text-[10px] text-red-500 uppercase font-black tracking-widest">Seleccionar Película o Serie</label>
+                            <select 
+                                className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white outline-none focus:border-red-600 text-sm"
+                                value={selectedContentId}
+                                onChange={e => setSelectedContentId(e.target.value)}
+                                required
+                            >
+                                <option value="" className="bg-[#121212]">-- Elige un contenido --</option>
+                                {allContentList.map(c => (
+                                    <option key={c.id} value={c.id} className="bg-[#121212]">
+                                        {c.title} ({c.type === 'series' ? 'Serie' : 'Película'})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {selectedContentId && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-white/5 animate-fade-in">
+                                {/* Formulario de Adición */}
+                                <div className="space-y-4">
+                                    <h3 className="text-sm font-black text-red-500 uppercase tracking-widest border-b border-white/5 pb-2">Añadir Miembro</h3>
+                                    
+                                    <div className="flex flex-col gap-1.5 font-sans">
+                                        <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Nombre completo</label>
+                                        <input 
+                                            className="bg-white/5 border border-white/10 p-3 rounded-lg text-white focus:border-red-600 outline-none text-xs"
+                                            value={castForm.name}
+                                            onChange={e => setCastForm({...castForm, name: e.target.value})}
+                                            placeholder="ej: Yuki Dobladora 🎙️"
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-col gap-1.5 font-sans">
+                                        <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Rol / Función</label>
+                                        <input 
+                                            className="bg-white/5 border border-white/10 p-3 rounded-lg text-white focus:border-red-600 outline-none text-xs"
+                                            value={castForm.role}
+                                            onChange={e => setCastForm({...castForm, role: e.target.value})}
+                                            placeholder="ej: Actriz de voz principal, Director..."
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-col gap-1.5 font-sans">
+                                        <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Personaje (Opcional)</label>
+                                        <input 
+                                            className="bg-white/5 border border-white/10 p-3 rounded-lg text-white focus:border-red-600 outline-none text-xs"
+                                            value={castForm.character}
+                                            onChange={e => setCastForm({...castForm, character: e.target.value})}
+                                            placeholder="ej: Yumi, Ren..."
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-col gap-1.5 font-sans">
+                                        <label className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Avatar URL (Opcional)</label>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                className="flex-grow bg-white/5 border border-white/10 p-3 rounded-lg text-white focus:border-red-600 outline-none text-xs"
+                                                value={castForm.avatar}
+                                                onChange={e => setCastForm({...castForm, avatar: e.target.value})}
+                                                placeholder="https://..."
+                                            />
+                                            <Uploader onUploadSuccess={(url) => setCastForm({...castForm, avatar: url})} />
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={handleAddCastMember}
+                                        disabled={loading}
+                                        className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3 rounded-lg text-xs transition-colors tracking-wider uppercase shadow-lg shadow-red-600/10"
+                                    >
+                                        {loading ? "Añadiendo..." : "Añadir al reparto"}
+                                    </button>
+                                </div>
+
+                                {/* Lista de Miembros Actuales */}
+                                <div className="space-y-4">
+                                    <h3 className="text-sm font-black text-red-500 uppercase tracking-widest border-b border-white/5 pb-2">Reparto Actual</h3>
+                                    
+                                    {loadingCastList ? (
+                                        <div className="flex justify-center items-center py-8">
+                                            <div className="w-5 h-5 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                                        </div>
+                                    ) : castList.length === 0 ? (
+                                        <p className="text-xs text-gray-400 italic py-4">No hay miembros personalizados en el reparto. Se usarán los predeterminados.</p>
+                                    ) : (
+                                        <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                                            {castList.map(member => (
+                                                <div key={member.id} className="flex items-center gap-3 bg-white/5 p-2 rounded-lg border border-white/5 text-xs text-left">
+                                                    {member.avatar ? (
+                                                        <img src={member.avatar} alt={member.name} className="w-8 h-8 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                                    ) : (
+                                                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-red-600/20 to-red-600/5 border border-red-600/20 flex items-center justify-center text-red-500 font-bold shrink-0">
+                                                            {member.name.charAt(0).toUpperCase()}
+                                                        </div>
+                                                    )}
+                                                    <div className="min-w-0 flex-grow">
+                                                        <h5 className="font-bold text-white truncate">{member.name}</h5>
+                                                        <p className="text-[10px] text-gray-500 truncate">
+                                                            {member.role} {member.character && `(como ${member.character})`}
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleDeleteCastMember(member.id)}
+                                                        className="text-red-500 hover:text-red-400 p-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/10 rounded transition-colors"
+                                                        title="Eliminar miembro"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {error && (
+                            <div className="p-4 bg-red-600/20 border border-red-600/50 rounded-xl">
+                                <p className="text-xs text-red-500 font-bold flex items-center gap-2">
+                                    ⚠️ {error}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <form onSubmit={handleSubmit} className="space-y-5">
 
                 {(type === 'episode' || type === 'season') && (
                     <div className="flex flex-col gap-2 animate-fade-in mb-4 md:mb-6">
@@ -559,6 +801,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         {loading ? "PROCESANDO..." : type === 'movie' ? "SUBIR PELÍCULA" : type === 'series' ? "CREAR SERIE" : type === 'season' ? "CREAR TEMPORADA" : "AÑADIR EPISODIO"}
                     </button>
                 </form>
+                )}
             </div>
         </div>
     );

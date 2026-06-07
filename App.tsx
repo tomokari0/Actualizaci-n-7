@@ -16,13 +16,10 @@ import ShakaPlayer from './src/components/ShakaPlayer';
 import ProfileSelector from './ProfileSelector';
 import AiAssistant from './src/components/AiAssistant';
 import { useMemoryCleanup } from './src/hooks/useMemoryCleanup';
-import AdBlock from './src/components/AdBlock';
-import AdSenseScript from './src/components/AdSenseScript';
 
 declare global {
   interface Window {
     JitsiMeetExternalAPI: any;
-    adsbygoogle: any;
     shaka: any;
     YT: any;
     onYouTubeIframeAPIReady: () => void;
@@ -73,11 +70,29 @@ const UserHistoryContext = createContext<UserHistoryContextType>({
 export const useUserHistory = () => useContext(UserHistoryContext);
 export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { profile: currentProfile } = useAuth();
+    const profileId = currentProfile?.id || 'global';
     const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
+
+    useEffect(() => {
+        const key = `seikotv_watch_progress_${profileId}`;
+        const saved = localStorage.getItem(key);
+        if (saved) {
+            try {
+                setWatchProgress(JSON.parse(saved));
+            } catch {
+                setWatchProgress({});
+            }
+        } else {
+            setWatchProgress({});
+        }
+    }, [profileId]);
 
     const updateProgress = (id: string, currentTime: number, duration: number) => {
         setWatchProgress(prev => {
-            return { ...prev, [id]: { currentTime, duration, lastWatched: Date.now() } };
+            const next = { ...prev, [id]: { currentTime, duration, lastWatched: Date.now() } };
+            const key = `seikotv_watch_progress_${profileId}`;
+            localStorage.setItem(key, JSON.stringify(next));
+            return next;
         });
     };
     return <UserHistoryContext.Provider value={{ watchProgress, updateProgress }}>{children}</UserHistoryContext.Provider>;
@@ -304,6 +319,89 @@ const VideoPlayer: React.FC<{
     const hasAutoSkippedRef = useRef<string | null>(null);
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    const [activeTab, setActiveTab] = useState<'episodes' | 'cast' | 'info'>('episodes');
+    const [cast, setCast] = useState<{ id: string; name: string; role: string; character?: string; avatar?: string; }[]>([]);
+    const [loadingCast, setLoadingCast] = useState(false);
+
+    // Default active tab based on item type
+    useEffect(() => {
+        if (item.type === 'movie') {
+            setActiveTab('info');
+        } else {
+            setActiveTab('episodes');
+        }
+    }, [item.type]);
+
+    // Fetch Cast & Crew from Firestore
+    useEffect(() => {
+        let isSubscribed = true;
+        setLoadingCast(true);
+        const fetchCast = async () => {
+            try {
+                const castRef = collection(db, "content", item.id, "cast");
+                const querySnapshot = await getDocs(castRef);
+                if (!isSubscribed) return;
+                
+                const castData: any[] = [];
+                querySnapshot.forEach((doc) => {
+                    castData.push({ id: doc.id, ...doc.data() });
+                });
+                setCast(castData);
+            } catch (err) {
+                console.error("Error fetching cast:", err);
+            } finally {
+                if (isSubscribed) setLoadingCast(false);
+            }
+        };
+
+        fetchCast();
+        return () => {
+            isSubscribed = false;
+        };
+    }, [item.id]);
+
+    const getPlaceholderCast = (title: string, type: 'movie' | 'series') => {
+        return [
+            {
+                id: 'p1',
+                name: 'Yuki Dobladora 🎙️',
+                role: 'Voz Principal (Protagonista)',
+                character: 'Yumi',
+                avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
+            },
+            {
+                id: 'p2',
+                name: 'Ken Gacha-Voice 🎙️',
+                role: 'Voz Co-Estelar',
+                character: 'Ren',
+                avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200'
+            },
+            {
+                id: 'p3',
+                name: 'Miyuki Chann ✨',
+                role: 'Voz de Reparto',
+                character: 'Ami',
+                avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200'
+            },
+            {
+                id: 'p4',
+                name: 'Seiko Creator 🎬',
+                role: 'Director, Guionista y Animación Gacha',
+                avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=200'
+            },
+            {
+                id: 'p5',
+                name: 'Sora Edits 💻',
+                role: 'Edición y Efectos Visuales',
+                avatar: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?auto=format&fit=crop&q=80&w=200'
+            }
+        ];
+    };
+
+    const [showResumeToast, setShowResumeToast] = useState(false);
+    const [resumeTime, setResumeTime] = useState(0);
+    const lastActiveVideoIdRef = useRef<string | null>(null);
+
     const activeVideo = useMemo(() => {
         const getData = (data: any) => {
             let url = data.videoUrl || '';
@@ -337,6 +435,45 @@ const VideoPlayer: React.FC<{
         }
         return { url: '', serverType: 'uploadcare', id: '', embedCode: '' };
     }, [item, episodes, currentEpIndex, currentAudio]);
+
+    // Track active video and prompt resume if watched before
+    useEffect(() => {
+        if (!activeVideo.id) return;
+        if (lastActiveVideoIdRef.current !== activeVideo.id) {
+            lastActiveVideoIdRef.current = activeVideo.id;
+            const progress = watchProgress[activeVideo.id];
+            if (progress && progress.currentTime > 10 && (progress.duration === 0 || progress.duration - progress.currentTime > 15)) {
+                setResumeTime(progress.currentTime);
+                setShowResumeToast(true);
+                const timer = setTimeout(() => {
+                    setShowResumeToast(false);
+                }, 10000); // 10s auto-dismiss
+                return () => clearTimeout(timer);
+            } else {
+                setShowResumeToast(false);
+                setResumeTime(0);
+            }
+        }
+    }, [activeVideo.id, watchProgress]);
+
+    const handleResume = useCallback(() => {
+        if (videoRef.current) {
+            videoRef.current.currentTime = resumeTime;
+        } else if (ytPlayerRef.current && ytPlayerRef.current.seekTo) {
+            ytPlayerRef.current.seekTo(resumeTime, true);
+        }
+        setShowResumeToast(false);
+    }, [resumeTime]);
+
+    const handleRestart = useCallback(() => {
+        if (videoRef.current) {
+            videoRef.current.currentTime = 0;
+        } else if (ytPlayerRef.current && ytPlayerRef.current.seekTo) {
+            ytPlayerRef.current.seekTo(0, true);
+        }
+        updateProgress(activeVideo.id, 0, duration || 1);
+        setShowResumeToast(false);
+    }, [activeVideo.id, duration, updateProgress]);
 
     // Refs for outside click detection
     const audioMenuRef = useRef<HTMLDivElement>(null);
@@ -453,7 +590,11 @@ const VideoPlayer: React.FC<{
                                 if (lastTime > 0) {
                                     event.target.seekTo(lastTime, true);
                                 } else if (watchProgress[activeVideo.id]) {
-                                    event.target.seekTo(watchProgress[activeVideo.id].currentTime, true);
+                                    const progress = watchProgress[activeVideo.id];
+                                    const shouldPrompt = progress && progress.currentTime > 10 && (progress.duration === 0 || progress.duration - progress.currentTime > 15);
+                                    if (!shouldPrompt) {
+                                        event.target.seekTo(progress.currentTime, true);
+                                    }
                                 }
                             },
                             onStateChange: (event: any) => {
@@ -651,7 +792,11 @@ const VideoPlayer: React.FC<{
             if (lastTime > 0) {
                 v.currentTime = lastTime;
             } else if (watchProgress[activeVideo.id]) {
-                v.currentTime = watchProgress[activeVideo.id].currentTime;
+                const progress = watchProgress[activeVideo.id];
+                const shouldPrompt = progress && progress.currentTime > 10 && (progress.duration === 0 || progress.duration - progress.currentTime > 15);
+                if (!shouldPrompt) {
+                    v.currentTime = progress.currentTime;
+                }
             }
             setDuration(v.duration);
         };
@@ -836,15 +981,28 @@ const VideoPlayer: React.FC<{
                             )}
                         </div>
                     )}
-                    {item.type === 'series' && (
-                        <button 
-                            onClick={() => setIsMenuOpen(!isMenuOpen)}
-                            className="bg-white/10 hover:bg-white/20 text-white p-2 md:p-3 rounded-full transition-all"
-                            title="Lista de Episodios"
-                        >
-                            <ListIcon className="w-5 h-5 md:w-6 md:h-6" />
-                        </button>
-                    )}
+                    <button 
+                        onClick={() => {
+                            setIsMenuOpen(!isMenuOpen);
+                            if (!isMenuOpen) {
+                                if (item.type === 'movie') {
+                                    setActiveTab('info');
+                                } else {
+                                    setActiveTab('episodes');
+                                }
+                            }
+                        }}
+                        className={`bg-white/10 hover:bg-white/20 text-white p-2 md:p-3 rounded-full transition-all flex items-center justify-center ${isMenuOpen ? 'ring-2 ring-red-600' : ''}`}
+                        title={item.type === 'series' ? "Episodios y Detalles" : "Información y Reparto"}
+                    >
+                        {item.type === 'series' ? <ListIcon className="w-5 h-5 md:w-6 md:h-6" /> : (
+                            <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="12" y1="16" x2="12" y2="12" />
+                              <line x1="12" y1="8" x2="12.01" y2="8" />
+                            </svg>
+                        )}
+                    </button>
                     <button onClick={onClose} className="bg-red-600 hover:bg-red-700 text-white p-2 md:p-3 rounded-full transition-all">
                         <svg className="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                     </button>
@@ -902,6 +1060,47 @@ const VideoPlayer: React.FC<{
                 {showSkipNotification && (
                     <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md text-white px-6 py-2 rounded-full border border-white/10 text-[10px] font-bold tracking-widest uppercase animate-slide-up z-40">
                         Intro omitida
+                    </div>
+                )}
+
+                {/* Notificación para Reanudar o Reiniciar Reproducción */}
+                {showResumeToast && (
+                    <div className="absolute top-24 right-4 md:right-8 bg-[#0c0c0c]/95 backdrop-blur-md border border-[#ef4444]/40 rounded-xl p-4 md:p-5 shadow-[0_0_25px_rgba(239,68,68,0.25)] z-40 max-w-sm animate-fade-in flex flex-col gap-3">
+                        <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-red-600/10 border border-red-600/30 flex items-center justify-center text-red-500 shrink-0">
+                                <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <div className="flex-grow min-w-0">
+                                <h4 className="text-white font-bebas text-lg tracking-wider uppercase">¿Continuar viendo?</h4>
+                                <p className="text-xs text-gray-400 leading-relaxed font-semibold">
+                                    Te quedaste en <span className="text-red-500 font-extrabold">{formatTime(resumeTime)}</span>. ¿Quieres reanudar desde ahí o reiniciar?
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setShowResumeToast(false)}
+                                className="text-gray-500 hover:text-white transition-colors p-0.5"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="flex gap-2.5">
+                            <button
+                                onClick={handleResume}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-[0_0_15px_rgba(239,68,68,0.3)] hover:scale-[1.02] active:scale-95"
+                            >
+                                Reanudar ({formatTime(resumeTime)})
+                            </button>
+                            <button
+                                onClick={handleRestart}
+                                className="flex-1 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all border border-white/10 hover:border-white/25 active:scale-95"
+                            >
+                                Reiniciar
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -1005,94 +1204,197 @@ const VideoPlayer: React.FC<{
                 </div>
             </div>
 
-            {/* MENÚ DE EPISODIOS (Lateral deslizable) */}
+            {/* MENÚ DE DETALLES Y EPISODIOS (Lateral deslizable) */}
             <div className={`fixed right-0 top-0 bottom-0 w-full sm:w-80 bg-black/95 backdrop-blur-xl border-l border-white/10 z-[210] transition-transform duration-500 shadow-2xl p-6 overflow-y-auto ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
-                <div className="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
-                    <h3 className="font-bebas text-2xl text-red-500 tracking-wider">Episodios</h3>
-                    <button onClick={() => setIsMenuOpen(false)} className="text-gray-400 hover:text-white">
+                <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-4">
+                    <h3 className="font-bebas text-2xl text-red-500 tracking-wider">
+                        {item.type === 'series' ? 'Detalles & Episodios' : 'Detalles & Reparto'}
+                    </h3>
+                    <button onClick={() => setIsMenuOpen(false)} className="text-gray-400 hover:text-white transition-colors">
                         <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                     </button>
                 </div>
 
-                {/* Sidebar Ad: Anuncio vertical al lado de la lista de episodios */}
-                <AdBlock 
-                    type="sidebar" 
-                    slot="3091845620" 
-                    minHeightClass="min-h-[250px] mb-6" 
-                    label="Publicidad" 
-                />
+                {/* Selector de pestañas */}
+                <div className="flex border-b border-white/10 mb-6 select-none font-semibold text-xs">
+                    {item.type === 'series' && (
+                        <button 
+                            onClick={() => setActiveTab('episodes')}
+                            className={`flex-1 py-2 text-center tracking-wider uppercase transition-all border-b-2 font-black ${activeTab === 'episodes' ? 'border-red-600 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
+                        >
+                            Episodios
+                        </button>
+                    )}
+                    <button 
+                        onClick={() => setActiveTab('info')}
+                        className={`flex-1 py-2 text-center tracking-wider uppercase transition-all border-b-2 font-black ${activeTab === 'info' ? 'border-red-600 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
+                    >
+                        Sinopsis
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('cast')}
+                        className={`flex-1 py-2 text-center tracking-wider uppercase transition-all border-b-2 font-black ${activeTab === 'cast' ? 'border-red-600 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
+                    >
+                        Reparto
+                    </button>
+                </div>
                 
-                <div className="space-y-4">
-                    {episodes.map((ep, idx) => {
-                        const progress = watchProgress[`${item.id}_${ep.id}`];
-                        const percent = progress ? (progress.currentTime / progress.duration) * 100 : 0;
+                {/* Episodes List Tab */}
+                {activeTab === 'episodes' && item.type === 'series' && (
+                    <div className="space-y-4 animate-fade-in animate-duration-150">
+                        {episodes.map((ep, idx) => {
+                            const progress = watchProgress[`${item.id}_${ep.id}`];
+                            const percent = progress ? (progress.currentTime / progress.duration) * 100 : 0;
 
-                        return (
-                            <div 
-                                key={`${ep.id}-${idx}`}
-                                onClick={() => { setCurrentEpIndex(idx); setIsMenuOpen(false); }}
-                                className={`group cursor-pointer p-3 rounded-lg border transition-all ${currentEpIndex === idx ? 'bg-red-600/20 border-red-600' : 'bg-white/5 border-transparent hover:border-white/20'}`}
-                            >
-                                <div className="flex gap-3">
-                                    <div className="relative w-24 aspect-video flex-shrink-0 bg-gray-800 rounded overflow-hidden">
-                                        <img src={ep.thumbnailUrl || item.thumbnailUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
-                                        {currentEpIndex === idx && (
-                                            <div className="absolute inset-0 flex items-center justify-center bg-red-600/40">
-                                                <PlayIcon className="w-6 h-6 text-white" />
-                                            </div>
-                                        )}
-                                        {/* Barra de progreso miniatura */}
-                                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-                                            <div className="h-full bg-red-500" style={{ width: `${percent}%` }} />
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-col justify-center min-w-0 flex-grow">
-                                        <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Capítulo {idx + 1}</span>
-                                        <h4 className="text-sm font-bold text-white truncate">{ep.title}</h4>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] text-gray-500">{ep.duration}</span>
-                                            {/* Download Button */}
-                                            {ep.videoUrl && (
-                                                <button 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        if (downloadedUrls.includes(ep.videoUrl)) {
-                                                            removeDownload(ep.videoUrl);
-                                                        } else {
-                                                            downloadVideo(ep.videoUrl, {
-                                                                id: `${item.id}_${ep.id}`,
-                                                                title: `${item.title} - ${ep.title}`,
-                                                                thumbnailUrl: ep.thumbnailUrl || item.thumbnailUrl,
-                                                                type: 'episode',
-                                                                parentContent: item
-                                                            });
-                                                        }
-                                                    }}
-                                                    className="p-1 hover:bg-white/10 rounded-full transition-all relative"
-                                                >
-                                                    {downloading[ep.videoUrl] !== undefined ? (
-                                                        <div className="relative w-4 h-4">
-                                                            <svg className="w-full h-full animate-spin text-red-500" viewBox="0 0 24 24">
-                                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
-                                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                                            </svg>
-                                                            {/* Neon effect */}
-                                                            <div className="absolute inset-0 bg-red-500 blur-sm rounded-full opacity-50 animate-pulse"></div>
-                                                        </div>
-                                                    ) : downloadedUrls.includes(ep.videoUrl) ? (
-                                                        <svg className="w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                                                    ) : (
-                                                        <DownloadIcon className="w-4 h-4 text-gray-400 hover:text-white" />
-                                                    )}
-                                                </button>
+                            return (
+                                <div 
+                                    key={`${ep.id}-${idx}`}
+                                    onClick={() => { setCurrentEpIndex(idx); setIsMenuOpen(false); }}
+                                    className={`group cursor-pointer p-3 rounded-lg border transition-all ${currentEpIndex === idx ? 'bg-red-600/20 border-red-600' : 'bg-white/5 border-transparent hover:border-white/20'}`}
+                                >
+                                    <div className="flex gap-3">
+                                        <div className="relative w-24 aspect-video flex-shrink-0 bg-gray-800 rounded overflow-hidden">
+                                            <img src={ep.thumbnailUrl || item.thumbnailUrl} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                                            {currentEpIndex === idx && (
+                                                <div className="absolute inset-0 flex items-center justify-center bg-red-600/40">
+                                                    <PlayIcon className="w-6 h-6 text-white" />
+                                                </div>
                                             )}
+                                            {/* Barra de progreso miniatura */}
+                                            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
+                                                <div className="h-full bg-red-500" style={{ width: `${percent}%` }} />
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-col justify-center min-w-0 flex-grow">
+                                            <span className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Capítulo {idx + 1}</span>
+                                            <h4 className="text-sm font-bold text-white truncate">{ep.title}</h4>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] text-gray-500">{ep.duration}</span>
+                                                {/* Download Button */}
+                                                {ep.videoUrl && (
+                                                    <button 
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (downloadedUrls.includes(ep.videoUrl)) {
+                                                                removeDownload(ep.videoUrl);
+                                                            } else {
+                                                                downloadVideo(ep.videoUrl, {
+                                                                    id: `${item.id}_${ep.id}`,
+                                                                    title: `${item.title} - ${ep.title}`,
+                                                                    thumbnailUrl: ep.thumbnailUrl || item.thumbnailUrl,
+                                                                    type: 'episode',
+                                                                    parentContent: item
+                                                                });
+                                                            }
+                                                        }}
+                                                        className="p-1 hover:bg-white/10 rounded-full transition-all relative"
+                                                    >
+                                                        {downloading[ep.videoUrl] !== undefined ? (
+                                                            <div className="relative w-4 h-4">
+                                                                <svg className="w-full h-full animate-spin text-red-500" viewBox="0 0 24 24">
+                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                </svg>
+                                                                {/* Neon effect */}
+                                                                <div className="absolute inset-0 bg-red-500 blur-sm rounded-full opacity-50 animate-pulse"></div>
+                                                            </div>
+                                                        ) : downloadedUrls.includes(ep.videoUrl) ? (
+                                                            <svg className="w-4 h-4 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                                        ) : (
+                                                            <DownloadIcon className="w-4 h-4 text-gray-400 hover:text-white" />
+                                                        )}
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Info (Sinopsis) Tab */}
+                {activeTab === 'info' && (
+                    <div className="space-y-6 text-gray-300 animate-fade-in animate-duration-150">
+                        <div className="relative aspect-video w-full bg-gray-900 rounded-lg overflow-hidden border border-white/5">
+                            <img src={item.backdropUrl || item.thumbnailUrl} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+                        </div>
+                        <div className="space-y-3">
+                            <h4 className="text-base font-black text-white">{item.title}</h4>
+                            <div className="flex flex-wrap gap-2 items-center text-[10px]">
+                                <span className="bg-red-600/20 text-red-500 px-2 py-0.5 rounded border border-red-600/30 font-black uppercase tracking-wider">
+                                    {item.type === 'series' ? 'Serie' : 'Película'}
+                                </span>
+                                <span className="text-gray-400 font-bold">{item.releaseYear}</span>
+                                <span className="px-1.5 py-0.2 border border-gray-600 text-gray-400 rounded uppercase font-bold">{item.rating}</span>
+                                {item.status && (
+                                    <span className={`px-2 py-0.5 rounded font-bold ${item.status === 'ongoing' ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' : item.status === 'completed' ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-500 border border-rose-500/30'}`}>
+                                        {item.status === 'ongoing' ? 'En emisión' : item.status === 'completed' ? 'Terminado' : 'Cancelado'}
+                                    </span>
+                                )}
                             </div>
-                        );
-                    })}
-                </div>
+                            
+                            <div className="flex flex-wrap gap-1.5 pt-1">
+                                {item.genre.map((g, idx) => (
+                                    <span key={idx} className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white px-2 py-0.5 rounded border border-white/5 text-[10px] transition-colors font-semibold">
+                                        {g}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="border-t border-white/10 pt-4 space-y-2">
+                            <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest block">Sinopsis</span>
+                            <p className="text-xs md:text-sm text-gray-300 leading-relaxed font-semibold">
+                                {item.description || "No hay una descripción disponible."}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Cast (Reparto) Tab */}
+                {activeTab === 'cast' && (
+                    <div className="space-y-4 animate-fade-in animate-duration-150 text-gray-300">
+                        {loadingCast ? (
+                            <div className="flex flex-col items-center justify-center py-12 gap-3">
+                                <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                                <span className="text-xs text-gray-400 font-bold">Cargando reparto...</span>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className="text-[10px] text-gray-400 uppercase font-black tracking-widest">Actores y Creadores</span>
+                                    {cast.length > 0 ? (
+                                        <span className="text-[9px] bg-red-600/10 text-red-500 px-1.5 py-0.5 rounded border border-red-600/20 font-black tracking-wider uppercase">Firestore</span>
+                                    ) : (
+                                        <span className="text-[9px] bg-white/5 text-gray-500 px-1.5 py-0.5 rounded border border-white/10 font-bold tracking-wider uppercase">Predeterminado</span>
+                                    )}
+                                </div>
+                                
+                                {(cast.length > 0 ? cast : getPlaceholderCast(item.title, item.type)).map((actor) => (
+                                    <div key={actor.id} className="flex items-center gap-3 bg-white/5 hover:bg-white/10 p-2.5 rounded-lg border border-transparent hover:border-white/5 transition-all">
+                                        {actor.avatar ? (
+                                            <img src={actor.avatar} alt={actor.name} className="w-10 h-10 rounded-full object-cover bg-gray-800 border border-white/10 shrink-0" referrerPolicy="no-referrer" />
+                                        ) : (
+                                            <div className="w-10 h-10 rounded-full bg-red-700/20 border border-red-600/30 flex items-center justify-center text-red-500 font-black shrink-0 text-sm">
+                                                {actor.name.charAt(0).toUpperCase()}
+                                            </div>
+                                        )}
+                                        <div className="min-w-0 flex-grow">
+                                            <h5 className="text-white text-xs font-black truncate">{actor.name}</h5>
+                                            <p className="text-[10px] text-gray-400 truncate font-semibold">
+                                                {actor.role}
+                                                {actor.character && <span className="text-red-500 font-bold"> · {actor.character}</span>}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -1180,7 +1482,7 @@ const ContentCard: React.FC<{
 };
 
 // --- COMPONENTE PRINCIPAL ---
-type Page = 'home' | 'movies' | 'series' | 'downloads' | 'fandubs' | 'comunidad';
+type Page = 'home' | 'movies' | 'series' | 'downloads' | 'comunidad';
 type Filter = 'all' | 'recent' | 'popular' | 'following' | 'ongoing';
 
 const MainApp: React.FC = () => {
@@ -1207,6 +1509,12 @@ const MainApp: React.FC = () => {
     const [searchResults, setSearchResults] = useState<Content[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
+    
+    // Search history and input focus states
+    const [isSearchFocused, setIsSearchFocused] = useState(false);
+    const [isMobileSearchFocused, setIsMobileSearchFocused] = useState(false);
+    const [searchHistory, setSearchHistory] = useState<string[]>([]);
+
     const [autoSkipIntro, setAutoSkipIntro] = useState(() => {
         return localStorage.getItem('seikotv_auto_skip_intro') === 'true';
     });
@@ -1229,6 +1537,44 @@ const MainApp: React.FC = () => {
         setActiveProfile(null);
         sessionStorage.removeItem('seikoyt_active_profile');
     };
+
+    // Load and sync Search History per Profile
+    useEffect(() => {
+        const key = `seikotv_search_history_${activeProfile?.id || 'global'}`;
+        const saved = localStorage.getItem(key);
+        try {
+            setSearchHistory(saved ? JSON.parse(saved) : []);
+        } catch {
+            setSearchHistory([]);
+        }
+    }, [activeProfile]);
+
+    const addToSearchHistory = useCallback((queryText: string) => {
+        const trimmed = queryText.trim();
+        if (!trimmed || trimmed.length < 2) return;
+        setSearchHistory(prev => {
+            const filtered = prev.filter(q => q.toLowerCase() !== trimmed.toLowerCase());
+            const updated = [trimmed, ...filtered].slice(0, 5);
+            const key = `seikotv_search_history_${activeProfile?.id || 'global'}`;
+            localStorage.setItem(key, JSON.stringify(updated));
+            return updated;
+        });
+    }, [activeProfile]);
+
+    const deleteHistoryItem = useCallback((queryText: string) => {
+        setSearchHistory(prev => {
+            const updated = prev.filter(q => q !== queryText);
+            const key = `seikotv_search_history_${activeProfile?.id || 'global'}`;
+            localStorage.setItem(key, JSON.stringify(updated));
+            return updated;
+        });
+    }, [activeProfile]);
+
+    const clearSearchHistory = useCallback(() => {
+        setSearchHistory([]);
+        const key = `seikotv_search_history_${activeProfile?.id || 'global'}`;
+        localStorage.removeItem(key);
+    }, [activeProfile]);
 
     const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
     const [showInstallButton, setShowInstallButton] = useState(false);
@@ -1334,6 +1680,7 @@ const MainApp: React.FC = () => {
         }
         
         setIsSearching(true);
+        addToSearchHistory(queryText);
         try {
             const apiKey = (import.meta as any).env.VITE_YOUTUBE_API_KEY;
             if (!apiKey) {
@@ -1366,7 +1713,7 @@ const MainApp: React.FC = () => {
         } finally {
             setIsSearching(false);
         }
-    }, []);
+    }, [addToSearchHistory]);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -1471,24 +1818,26 @@ const MainApp: React.FC = () => {
                         SEIKOTV
                     </h1>
                     <nav className="hidden md:flex gap-6 lg:gap-8">
-                        {['home', 'movies', 'series', 'fandubs', 'comunidad', 'downloads'].map(p => (
+                        {['home', 'movies', 'series', 'comunidad', 'downloads'].map(p => (
                             <button 
                                 key={p} 
                                 onClick={() => { setCurrentPage(p as Page); setSearchResults([]); }} 
                                 className={`text-[11px] lg:text-[12px] font-bold uppercase tracking-[0.2em] lg:tracking-[0.3em] transition-all hover:text-red-500 ${currentPage === p && searchResults.length === 0 ? 'text-red-500 border-b-2 border-red-500' : 'text-gray-400'}`}
                             >
-                                {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : p === 'fandubs' ? 'FanDubs' : p === 'comunidad' ? 'Comunidad' : 'Descargas'}
+                                {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : p === 'comunidad' ? 'Comunidad' : 'Descargas'}
                             </button>
                         ))}
                     </nav>
                 </div>
                 
-                <div className="flex-grow max-w-md mx-8 hidden lg:block">
+                <div className="flex-grow max-w-md mx-8 hidden lg:block relative">
                     <form onSubmit={handleSearch} className="relative group">
                         <input 
                             type="text"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
+                            onFocus={() => setIsSearchFocused(true)}
+                            onBlur={() => setTimeout(() => setIsSearchFocused(false), 250)}
                             placeholder="Buscar en YouTube..."
                             className="w-full bg-white/5 border border-white/10 px-12 py-2.5 rounded-full text-sm focus:bg-white/10 focus:border-red-600 outline-none transition-all placeholder:text-gray-500"
                         />
@@ -1499,6 +1848,64 @@ const MainApp: React.FC = () => {
                             </div>
                         )}
                     </form>
+
+                    {/* Búsquedas Recientes Dropdown */}
+                    {searchHistory.length > 0 && isSearchFocused && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-[#0c0c0c]/98 backdrop-blur-md border border-red-600/30 rounded-2xl p-4 shadow-[0_10px_35px_rgba(239,68,68,0.2)] z-[60] animate-fade-in space-y-3">
+                            <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                                <span className="text-[10px] font-black tracking-widest text-[#ef4444] uppercase flex items-center gap-1.5">
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Búsquedas Recientes
+                                </span>
+                                <button 
+                                    type="button"
+                                    onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        clearSearchHistory();
+                                    }}
+                                    className="text-[9px] font-black text-gray-500 hover:text-red-500 uppercase tracking-wider transition-colors"
+                                >
+                                    Borrar Todo
+                                </button>
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                {searchHistory.map((query, index) => (
+                                    <div 
+                                        key={index}
+                                        className="flex justify-between items-center group/item hover:bg-white/5 rounded-lg px-2.5 py-1.5 transition-all duration-200"
+                                    >
+                                        <button
+                                            type="button"
+                                            onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                setSearchQuery(query);
+                                                performSearch(query);
+                                                setIsSearchFocused(false);
+                                            }}
+                                            className="flex-grow text-left text-xs text-gray-300 hover:text-white transition-colors flex items-center gap-2 font-medium"
+                                        >
+                                            {query}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                deleteHistoryItem(query);
+                                            }}
+                                            className="opacity-0 group-hover/item:opacity-100 text-gray-500 hover:text-red-500 p-1 rounded-md hover:bg-white/5 transition-all duration-150"
+                                            title="Eliminar de mi historial"
+                                        >
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2 md:gap-6">
@@ -1555,23 +1962,79 @@ const MainApp: React.FC = () => {
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
+                        onFocus={() => setIsMobileSearchFocused(true)}
+                        onBlur={() => setTimeout(() => setIsMobileSearchFocused(false), 250)}
                         placeholder="Buscar en YouTube..."
                         className="w-full bg-white/10 border border-white/20 px-12 py-3 rounded-xl text-sm focus:border-red-600 outline-none transition-all"
                     />
                     <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 </form>
+
+                {/* Mobile Search History */}
+                {searchHistory.length > 0 && isMobileSearchFocused && (
+                    <div className="mt-4 bg-[#0c0c0c] border border-red-600/20 rounded-xl p-4 shadow-xl space-y-3">
+                        <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                            <span className="text-[10px] font-black tracking-widest text-[#ef4444] uppercase flex items-center gap-1.5">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Búsquedas Recientes
+                            </span>
+                            <button 
+                                type="button"
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    clearSearchHistory();
+                                }}
+                                className="text-[9px] font-black text-gray-500 hover:text-red-500 uppercase tracking-wider transition-colors"
+                            >
+                                Borrar
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {searchHistory.map((query, index) => (
+                                <div key={index} className="flex items-center gap-1.5 bg-white/5 border border-white/10 hover:border-red-600/30 hover:bg-white/10 rounded-full px-3 py-1.5 transition-all">
+                                    <button
+                                        type="button"
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            setSearchQuery(query);
+                                            performSearch(query);
+                                            setIsMobileSearchOpen(false);
+                                        }}
+                                        className="text-xs text-gray-300 hover:text-white font-medium"
+                                    >
+                                        {query}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            deleteHistoryItem(query);
+                                        }}
+                                        className="text-gray-500 hover:text-red-500 p-0.5 rounded-full hover:bg-white/5 transition-colors"
+                                    >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Mobile Menu Overlay */}
             <div className={`fixed inset-0 bg-black/95 z-[60] transition-all duration-500 md:hidden ${isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
                 <div className="flex flex-col items-center justify-center h-full gap-8">
-                    {['home', 'movies', 'series', 'fandubs', 'comunidad', 'downloads'].map(p => (
+                    {['home', 'movies', 'series', 'comunidad', 'downloads'].map(p => (
                         <button 
                             key={p} 
                             onClick={() => { setCurrentPage(p as Page); setIsMobileMenuOpen(false); setSearchResults([]); }} 
                             className={`text-4xl font-bebas tracking-[0.2em] transition-all ${currentPage === p ? 'text-red-500' : 'text-gray-400'}`}
                         >
-                            {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : p === 'fandubs' ? 'FanDubs' : p === 'comunidad' ? 'Comunidad' : 'Descargas'}
+                            {p === 'home' ? 'Inicio' : p === 'movies' ? 'Películas' : p === 'series' ? 'Series' : p === 'comunidad' ? 'Comunidad' : 'Descargas'}
                         </button>
                     ))}
                     <button 
@@ -1622,13 +2085,6 @@ const MainApp: React.FC = () => {
                 )}
 
                 <div className={`px-4 md:px-24 pb-24 ${currentPage !== 'home' ? 'pt-24 md:pt-32' : ''}`}>
-                    {/* Banner Superior (Leaderboard) - CLS Safe Dark Mode Container */}
-                    <AdBlock 
-                        type="leaderboard" 
-                        slot="1084792643" 
-                        minHeightClass="min-h-[100px] mb-8" 
-                        label="Publicidad" 
-                    />
 
                     {currentPage === 'downloads' ? (
                         <div className="animate-fade-in">
@@ -1823,57 +2279,45 @@ const MainApp: React.FC = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Inject Google AdSense In-Feed Ad in Dark Mode below the second post */}
-                                            {index === 1 && (
-                                                <AdBlock 
-                                                    type="in-feed" 
-                                                    slot="4839027156" 
-                                                    minHeightClass="min-h-[160px]" 
-                                                    label="Publicidad Recomendada" 
-                                                />
-                                            )}
                                         </React.Fragment>
                                     ))}
-                            </div>
-                        </div>
-                    ) : currentPage === 'fandubs' ? (
-                        <div className="animate-fade-in pt-4">
-                            <h3 className="text-2xl md:text-5xl font-bebas text-white tracking-[0.2em] uppercase border-l-4 md:border-l-8 border-red-600 pl-4 md:pl-6 mb-12">
-                                Gacha FanDubs & Doblajes
-                            </h3>
-                            <p className="text-gray-400 text-sm mb-12 max-w-2xl leading-relaxed">
-                                Bienvenido al rincón del doblaje de SeikoYT. Explora series y cortometrajes doblados por la comunidad de actores de voz independientes.
-                            </p>
-                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-8">
-                                {contentList.filter(item => item.genre.some(g => g.toLowerCase().includes('doblaje') || g.toLowerCase().includes('dub') || g.toLowerCase().includes('gacha') || g.toLowerCase().includes('fandub'))).map((item, idx) => {
-                                    const progressKey = item.type === 'movie' ? item.id : `${item.id}_${item.seasons?.[0]?.episodes?.[0]?.id || ''}`;
-                                    const progress = watchProgress[progressKey];
-                                    
-                                    return (
-                                        <ContentCard 
-                                            key={`${item.id}-fd-${idx}`} 
-                                            item={item} 
-                                            onPlay={() => setSelectedVideo(item)} 
-                                            progress={progress ? (progress.currentTime / progress.duration) * 100 : undefined} 
-                                        />
-                                    );
-                                })}
                             </div>
                         </div>
                     ) : (
                         <>
                             {searchResults.length > 0 && (
                         <div className="mb-16 animate-fade-in">
-                            <div className="flex justify-between items-center mb-8">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                                 <h3 className="text-2xl md:text-4xl font-bebas text-white tracking-[0.2em] uppercase border-l-4 md:border-l-8 border-red-600 pl-4 md:pl-6">
                                     Resultados de YouTube
                                 </h3>
-                                <button 
-                                    onClick={() => setSearchResults([])}
-                                    className="text-gray-500 hover:text-white text-xs font-bold uppercase tracking-widest"
-                                >
-                                    Limpiar
-                                </button>
+                                <div className="flex items-center gap-4 flex-wrap sm:flex-nowrap">
+                                    {searchHistory.length > 0 && (
+                                        <div className="hidden sm:flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1 rounded-full text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                            <span className="text-stone-500">Recientes:</span>
+                                            <div className="flex gap-2">
+                                                {searchHistory.slice(0, 3).map((q, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        onClick={() => {
+                                                            setSearchQuery(q);
+                                                            performSearch(q);
+                                                        }}
+                                                        className="text-gray-400 hover:text-red-500 transition-colors uppercase text-[9px] hover:underline font-extrabold"
+                                                    >
+                                                        {q}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    <button 
+                                        onClick={() => { setSearchResults([]); setSearchQuery(''); }}
+                                        className="text-gray-500 hover:text-white text-xs font-bold uppercase tracking-widest"
+                                    >
+                                        Limpiar
+                                    </button>
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-8">
                                 {searchResults.map((item, idx) => (
@@ -1934,7 +2378,7 @@ const MainApp: React.FC = () => {
             </main>
 
             <Footer onNavigate={(tab) => {
-                const validPages: Page[] = ['home', 'movies', 'series', 'downloads', 'fandubs', 'comunidad'];
+                const validPages: Page[] = ['home', 'movies', 'series', 'downloads', 'comunidad'];
                 if (validPages.includes(tab as any)) {
                     setCurrentPage(tab as any);
                     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1966,7 +2410,6 @@ const App: React.FC = () => (
     <AuthProvider>
         <LanguageProvider>
             <UserHistoryProvider>
-                <AdSenseScript />
                 <MainApp />
             </UserHistoryProvider>
         </LanguageProvider>

@@ -161,6 +161,11 @@ service cloud.firestore {
         allow read: if isAuthenticated();
         allow write: if isAdmin();
       }
+
+      match /cast/{castId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin();
+      }
     }
 
     // Feedback collection

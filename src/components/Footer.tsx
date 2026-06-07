@@ -18,8 +18,8 @@ const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
 
     const exploreLinks = [
         { name: 'Inicio', tab: 'home' },
+        { name: 'Películas', tab: 'movies' },
         { name: 'Series Gacha', tab: 'series' },
-        { name: 'FanDubs', tab: 'fandubs' },
         { name: 'Comunidad', tab: 'comunidad' },
     ];
 
@@ -42,7 +42,7 @@ const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                             </span>
                         </div>
                         <p className="text-gray-400 text-sm leading-relaxed max-w-xs">
-                            La plataforma definitiva de entretenimiento Gacha y FanDubs. Contenido de calidad creado por y para la comunidad.
+                            La plataforma definitiva de entretenimiento Gacha. Contenido de calidad creado por y para la comunidad.
                         </p>
                     </div>
 
