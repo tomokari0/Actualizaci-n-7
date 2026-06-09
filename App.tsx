@@ -318,6 +318,8 @@ const VideoPlayer: React.FC<{
     const [zoomLevel, setZoomLevel] = useState(1);
     const hasAutoSkippedRef = useRef<string | null>(null);
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const [showScreensaver, setShowScreensaver] = useState(false);
+    const screensaverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const [activeTab, setActiveTab] = useState<'episodes' | 'cast' | 'info'>('episodes');
     const [cast, setCast] = useState<{ id: string; name: string; role: string; character?: string; avatar?: string; }[]>([]);
@@ -625,16 +627,42 @@ const VideoPlayer: React.FC<{
         }, 3000);
     }, []);
 
+    const resetScreensaver = useCallback(() => {
+        setShowScreensaver(false);
+        if (screensaverTimerRef.current) {
+            clearTimeout(screensaverTimerRef.current);
+            screensaverTimerRef.current = null;
+        }
+
+        if (videoRef.current && videoRef.current.paused && !videoRef.current.ended) {
+            screensaverTimerRef.current = setTimeout(() => {
+                setShowScreensaver(true);
+            }, 5000);
+        }
+    }, [videoRef]);
+
     useEffect(() => {
-        window.addEventListener('mousemove', resetIdleTimer);
-        window.addEventListener('touchstart', resetIdleTimer);
-        resetIdleTimer();
-        return () => {
-            window.removeEventListener('mousemove', resetIdleTimer);
-            window.removeEventListener('touchstart', resetIdleTimer);
-            if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+        const handleActivity = () => {
+            resetIdleTimer();
+            resetScreensaver();
         };
-    }, [resetIdleTimer]);
+
+        window.addEventListener('mousemove', handleActivity);
+        window.addEventListener('touchstart', handleActivity);
+        window.addEventListener('keydown', handleActivity);
+        window.addEventListener('mousedown', handleActivity);
+
+        handleActivity();
+
+        return () => {
+            window.removeEventListener('mousemove', handleActivity);
+            window.removeEventListener('touchstart', handleActivity);
+            window.removeEventListener('keydown', handleActivity);
+            window.removeEventListener('mousedown', handleActivity);
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+            if (screensaverTimerRef.current) clearTimeout(screensaverTimerRef.current);
+        };
+    }, [resetIdleTimer, resetScreensaver]);
 
     // 1. Lógica de Firebase: Consultar sub-colección de episodios
     useEffect(() => {
@@ -801,10 +829,27 @@ const VideoPlayer: React.FC<{
             setDuration(v.duration);
         };
         
+        const handlePlayEvent = () => {
+            setIsPlaying(true);
+            setShowScreensaver(false);
+            if (screensaverTimerRef.current) {
+                clearTimeout(screensaverTimerRef.current);
+                screensaverTimerRef.current = null;
+            }
+        };
+
+        const handlePauseEvent = () => {
+            setIsPlaying(false);
+            if (screensaverTimerRef.current) clearTimeout(screensaverTimerRef.current);
+            screensaverTimerRef.current = setTimeout(() => {
+                setShowScreensaver(true);
+            }, 5000);
+        };
+
         v.addEventListener('timeupdate', onTime);
         v.addEventListener('loadedmetadata', onLoaded);
-        v.addEventListener('play', () => setIsPlaying(true));
-        v.addEventListener('pause', () => setIsPlaying(false));
+        v.addEventListener('play', handlePlayEvent);
+        v.addEventListener('pause', handlePauseEvent);
         v.addEventListener('loadedmetadata', () => {
             v.playbackRate = playbackSpeed;
         });
@@ -816,8 +861,8 @@ const VideoPlayer: React.FC<{
         return () => { 
             v.removeEventListener('timeupdate', onTime); 
             v.removeEventListener('loadedmetadata', onLoaded); 
-            v.removeEventListener('play', () => setIsPlaying(true));
-            v.removeEventListener('pause', () => setIsPlaying(false));
+            v.removeEventListener('play', handlePlayEvent);
+            v.removeEventListener('pause', handlePauseEvent);
         };
     }, [activeVideo.id, isEmbed, lastTime]);
 
@@ -1202,6 +1247,67 @@ const VideoPlayer: React.FC<{
                         </div>
                     </div>
                 </div>
+
+                {/* Informative Screensaver Overlay */}
+                {showScreensaver && (
+                    <div className="absolute inset-0 z-[150] bg-black/95 flex items-center p-8 md:p-24 select-none animate-fade-in pointer-events-none transition-all duration-700">
+                        {/* Neon aesthetic accents */}
+                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-red-600 shadow-[0_0_25px_rgba(239,68,68,0.9)] animate-pulse" />
+                        <div className="absolute inset-0 bg-gradient-to-r from-red-600/10 via-black/40 to-transparent pointer-events-none" />
+
+                        <div className="max-w-xl text-left space-y-4 md:space-y-6 z-10 p-4">
+                            {/* Dynamic fade-in indicator */}
+                            <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
+                                <span className="text-red-500 font-sans font-black text-[10px] md:text-xs uppercase tracking-[0.3em] block">
+                                    Estás viendo...
+                                </span>
+                            </div>
+
+                            {/* Title Logo (Required <img>) or elegant text fallback */}
+                            <div className="flex items-center">
+                                {((item.type === 'series' && episodes[currentEpIndex]?.titleLogoUrl) || item.titleLogoUrl) ? (
+                                    <img 
+                                        src={(item.type === 'series' && episodes[currentEpIndex]?.titleLogoUrl) || item.titleLogoUrl} 
+                                        alt={item.title} 
+                                        className="max-h-20 sm:max-h-24 md:max-h-32 object-contain filter drop-shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-fade-in" 
+                                        referrerPolicy="no-referrer"
+                                    />
+                                ) : (
+                                    <h1 className="text-4xl sm:text-5xl md:text-6xl font-black text-white uppercase tracking-wider font-sans border-b-2 border-red-600 pb-2 shadow-[0_0_25px_rgba(220,38,38,0.3)]">
+                                        {item.title}
+                                    </h1>
+                                )}
+                            </div>
+
+                            {/* Metadatos (Año, Temporada, Episodio) */}
+                            <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-xs md:text-sm font-bold text-gray-400 tracking-wider">
+                                <span className="bg-white/10 px-2.5 py-0.5 rounded text-white text-[9px] md:text-xs">{item.releaseYear}</span>
+                                <span>•</span>
+                                {item.type === 'series' && episodes[currentEpIndex] ? (
+                                    <>
+                                        <span className="text-red-500">Temporada 1</span>
+                                        <span>•</span>
+                                        <span>Ep. {(episodes[currentEpIndex] as any).episodeNumber || (currentEpIndex + 1)}</span>
+                                    </>
+                                ) : (
+                                    <span className="text-red-500 font-bold uppercase tracking-widest text-[9px] md:text-xs">Película</span>
+                                )}
+                                <span>•</span>
+                                <span className="text-gray-500 uppercase tracking-widest text-[9px] md:text-xs font-sans">SeikoYT Premium</span>
+                            </div>
+
+                            {/* Sinopsis with subtle fade-out effect */}
+                            <div className="relative">
+                                <p className="text-xs sm:text-sm md:text-base text-gray-300 leading-relaxed font-sans line-clamp-3 select-none">
+                                    {(item.type === 'series' && episodes[currentEpIndex]?.description) || item.description}
+                                </p>
+                                {/* Linear-gradient overlay creating a blur/fade-out at the bottom of the description */}
+                                <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-black/0 to-transparent pointer-events-none" />
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* MENÚ DE DETALLES Y EPISODIOS (Lateral deslizable) */}

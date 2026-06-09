@@ -14,6 +14,7 @@ export interface Episode {
   introStart?: number;
   introEnd?: number;
   skipIntro?: number;
+  titleLogoUrl?: string;
 }
 
 export interface Season {
@@ -49,6 +50,7 @@ export interface Content {
   releaseYear: number;
   featured?: boolean;
   youtubeId?: string;
+  titleLogoUrl?: string;
  
   // Movie specific (or default fallback)
   videoUrl?: string;

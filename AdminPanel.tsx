@@ -6,8 +6,12 @@ import { Content, Season } from './types';
 import { LANGUAGES } from './constants';
 import Uploader from './Uploader';
 import SeikoMediaEngine from './src/components/SeikoMediaEngine';
+import { useAuth } from './AuthContext';
 
 const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const { isAdmin, user } = useAuth();
+    const canUploadLogo = isAdmin || user?.email === 'tomokari07@gmail.com';
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [type, setType] = useState<'movie' | 'series' | 'season' | 'episode' | 'cast'>('movie');
@@ -51,7 +55,8 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         // Episode specific
         episodeNumber: 1,
         duration: '24m',
-        skipIntro: 0
+        skipIntro: 0,
+        titleLogoUrl: ''
     });
 
     useEffect(() => {
@@ -208,7 +213,8 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     episodeNumber: Number(formData.episodeNumber),
                     duration: formData.duration,
                     skipIntro: Number(formData.skipIntro),
-                    createdAt: firestoreTimestamp()
+                    createdAt: firestoreTimestamp(),
+                    titleLogoUrl: formData.titleLogoUrl || ""
                 });
                 alert("¡Episodio añadido con éxito! 🎬");
             } else if (type === 'season') {
@@ -240,6 +246,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     status: formData.status,
                     skipIntro: Number(formData.skipIntro),
                     createdAt: firestoreTimestamp(),
+                    titleLogoUrl: formData.titleLogoUrl || ""
                 };
                 await addDoc(contentRef, newContent);
                 alert(type === 'series' ? "¡Serie creada! 🎉" : "¡Película subida! 🎉");
@@ -771,6 +778,25 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             </button>
                         </div>
                     </div>
+
+                    {canUploadLogo && (type === 'movie' || type === 'series' || type === 'episode') && (
+                        <div className="flex flex-col gap-2 pt-4 border-t border-white/5 animate-fade-in text-left">
+                            <label className="text-[10px] text-red-500 uppercase font-black tracking-widest flex items-center gap-2">
+                                <span>Logotipo del Título (PNG/WEBP Transparente)</span>
+                                <span className="bg-red-500/15 text-red-500 px-2 py-0.5 rounded text-[8px] border border-red-500/20 font-sans">Exclusivo Admin</span>
+                            </label>
+                            <div className="flex gap-2">
+                                <input 
+                                    className="flex-grow bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs"
+                                    placeholder="ej: https://res.cloudinary.com/.../logo.png"
+                                    value={formData.titleLogoUrl}
+                                    onChange={e => setFormData({...formData, titleLogoUrl: e.target.value})}
+                                />
+                                <Uploader onUploadSuccess={(url) => setFormData({...formData, titleLogoUrl: url})} />
+                            </div>
+                            <p className="text-[10px] text-gray-500 italic mt-0.5 font-sans">Este logotipo se mostrará en el protector de pantalla &quot;Estás viendo...&quot; tras 5 segundos de pausa.</p>
+                        </div>
+                    )}
 
                     {type !== 'episode' && type !== 'season' && (
                         <div className="flex items-center gap-3 pt-4">

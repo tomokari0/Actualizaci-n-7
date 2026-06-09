@@ -39,7 +39,8 @@
         "rating": { "type": "string" },
         "genre": { "type": "array", "items": { "type": "string" } },
         "status": { "type": "string", "enum": ["ongoing", "completed", "cancelled"] },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "titleLogoUrl": { "type": "string" }
       }
     },
     "Episode": {
@@ -51,7 +52,8 @@
         "episodeNumber": { "type": "integer" },
         "videoUrl": { "type": "string" },
         "thumbnailUrl": { "type": "string" },
-        "duration": { "type": "string" }
+        "duration": { "type": "string" },
+        "titleLogoUrl": { "type": "string" }
       }
     },
     "CastMember": {
