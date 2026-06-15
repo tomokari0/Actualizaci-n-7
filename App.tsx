@@ -109,6 +109,7 @@ const DownloadIcon = ({ className }: { className?: string }) => <svg className={
 const VolumeIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>;
 const MuteIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>;
 const FullscreenIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>;
+const PiPIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><rect x="13" y="11" width="7" height="5" rx="1" /></svg>;
 const ZoomInIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>;
 const SpeedIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const RotateCcw = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>;
@@ -321,6 +322,71 @@ const VideoPlayer: React.FC<{
     const [showScreensaver, setShowScreensaver] = useState(false);
     const screensaverTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    const [isAccelerating, setIsAccelerating] = useState(false);
+    const isAcceleratingRef = useRef(false);
+    const touchTimeoutRef = useRef<any>(null);
+    const isTouchingRef = useRef(false);
+    const spacePressedRef = useRef(false);
+    const spaceHoldTimerRef = useRef<any>(null);
+
+    const startAccelerating = useCallback(() => {
+        setIsAccelerating(true);
+        isAcceleratingRef.current = true;
+        if (videoRef.current) {
+            videoRef.current.playbackRate = 2.0;
+        }
+        if (ytPlayerRef.current?.setPlaybackRate) {
+            ytPlayerRef.current.setPlaybackRate(2.0);
+        }
+    }, []);
+
+    const stopAccelerating = useCallback(() => {
+        setIsAccelerating(false);
+        isAcceleratingRef.current = false;
+        if (videoRef.current) {
+            videoRef.current.playbackRate = playbackSpeed;
+        }
+        if (ytPlayerRef.current?.setPlaybackRate) {
+            ytPlayerRef.current.setPlaybackRate(playbackSpeed);
+        }
+    }, [playbackSpeed]);
+
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+        isTouchingRef.current = true;
+        if (touchTimeoutRef.current) clearTimeout(touchTimeoutRef.current);
+        
+        touchTimeoutRef.current = setTimeout(() => {
+            if (isTouchingRef.current) {
+                startAccelerating();
+            }
+        }, 300);
+    }, [startAccelerating]);
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+        isTouchingRef.current = false;
+        if (touchTimeoutRef.current) {
+            clearTimeout(touchTimeoutRef.current);
+            touchTimeoutRef.current = null;
+        }
+        
+        if (isAcceleratingRef.current) {
+            stopAccelerating();
+        } else {
+            setShowControls(prev => !prev);
+        }
+    }, [stopAccelerating]);
+
+    const handleTouchCancel = useCallback((e: React.TouchEvent) => {
+        isTouchingRef.current = false;
+        if (touchTimeoutRef.current) {
+            clearTimeout(touchTimeoutRef.current);
+            touchTimeoutRef.current = null;
+        }
+        if (isAcceleratingRef.current) {
+            stopAccelerating();
+        }
+    }, [stopAccelerating]);
+
     const [activeTab, setActiveTab] = useState<'episodes' | 'cast' | 'info'>('episodes');
     const [cast, setCast] = useState<{ id: string; name: string; role: string; character?: string; avatar?: string; }[]>([]);
     const [loadingCast, setLoadingCast] = useState(false);
@@ -509,6 +575,22 @@ const VideoPlayer: React.FC<{
         }
         return url;
     }, [activeVideo.url]);
+
+    const isEmbed = processedUrl.includes('iframe') || processedUrl.includes('uqload.com') || processedUrl.includes('youtube.com') || item.source === 'youtube';
+
+    const [isPiPActive, setIsPiPActive] = useState(false);
+    const togglePiP = useCallback(async () => {
+        if (!videoRef.current || isEmbed) return;
+        try {
+            if (document.pictureInPictureElement) {
+                await document.exitPictureInPicture();
+            } else if (document.pictureInPictureEnabled) {
+                await videoRef.current.requestPictureInPicture();
+            }
+        } catch (error) {
+            console.error("Error toggling Picture-in-Picture:", error);
+        }
+    }, [isEmbed]);
 
     // --- LÓGICA DE SKIP INTRO ---
     const skipIntroTime = useMemo(() => {
@@ -699,8 +781,6 @@ const VideoPlayer: React.FC<{
         }
     }, [item]);
 
-    const isEmbed = processedUrl.includes('iframe') || processedUrl.includes('uqload.com') || processedUrl.includes('youtube.com') || item.source === 'youtube';
-
     const playerContainerRef = useRef<HTMLDivElement>(null);
 
     const togglePlay = useCallback(() => {
@@ -761,15 +841,35 @@ const VideoPlayer: React.FC<{
     }, []);
 
     useEffect(() => {
+        const isTyping = () => {
+            const el = document.activeElement;
+            if (!el) return false;
+            const tag = el.tagName.toUpperCase();
+            return tag === 'INPUT' || tag === 'TEXTAREA' || el.hasAttribute('contenteditable');
+        };
+
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (isTyping()) return;
+
             if (!showControls) setShowControls(true);
             resetIdleTimer();
 
+            if (e.code === 'Space' || e.keyCode === 32) {
+                e.preventDefault();
+                if (e.repeat) return;
+
+                spacePressedRef.current = true;
+                if (spaceHoldTimerRef.current) clearTimeout(spaceHoldTimerRef.current);
+                
+                spaceHoldTimerRef.current = setTimeout(() => {
+                    if (spacePressedRef.current) {
+                        startAccelerating();
+                    }
+                }, 300);
+                return;
+            }
+
             switch(e.code) {
-                case 'Space':
-                    e.preventDefault();
-                    togglePlay();
-                    break;
                 case 'KeyM':
                     toggleMute();
                     break;
@@ -784,9 +884,34 @@ const VideoPlayer: React.FC<{
                     break;
             }
         };
+
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (isTyping()) return;
+
+            if (e.code === 'Space' || e.keyCode === 32) {
+                e.preventDefault();
+                spacePressedRef.current = false;
+                if (spaceHoldTimerRef.current) {
+                    clearTimeout(spaceHoldTimerRef.current);
+                    spaceHoldTimerRef.current = null;
+                }
+
+                if (isAcceleratingRef.current) {
+                    stopAccelerating();
+                } else {
+                    togglePlay();
+                }
+            }
+        };
+
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [togglePlay, toggleMute, toggleFullscreen, jump, showControls, resetIdleTimer]);
+        window.addEventListener('keyup', handleKeyUp);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+            if (spaceHoldTimerRef.current) clearTimeout(spaceHoldTimerRef.current);
+        };
+    }, [togglePlay, toggleMute, toggleFullscreen, jump, showControls, resetIdleTimer, startAccelerating, stopAccelerating]);
 
     const youtubeUrl = useMemo(() => {
         if (item.source === 'youtube' && item.youtubeId) {
@@ -796,13 +921,14 @@ const VideoPlayer: React.FC<{
     }, [item]);
 
     useEffect(() => {
+        const speedToUse = isAccelerating ? 2.0 : playbackSpeed;
         if (ytPlayerRef.current && ytPlayerRef.current.setPlaybackRate) {
-            ytPlayerRef.current.setPlaybackRate(playbackSpeed);
+            ytPlayerRef.current.setPlaybackRate(speedToUse);
         }
         if (videoRef.current) {
-            videoRef.current.playbackRate = playbackSpeed;
+            videoRef.current.playbackRate = speedToUse;
         }
-    }, [playbackSpeed]);
+    }, [playbackSpeed, isAccelerating]);
 
     useEffect(() => {
         const v = videoRef.current;
@@ -846,12 +972,17 @@ const VideoPlayer: React.FC<{
             }, 5000);
         };
 
+        const handleEnterPiP = () => setIsPiPActive(true);
+        const handleLeavePiP = () => setIsPiPActive(false);
+
         v.addEventListener('timeupdate', onTime);
         v.addEventListener('loadedmetadata', onLoaded);
         v.addEventListener('play', handlePlayEvent);
         v.addEventListener('pause', handlePauseEvent);
+        v.addEventListener('enterpictureinpicture', handleEnterPiP);
+        v.addEventListener('leavepictureinpicture', handleLeavePiP);
         v.addEventListener('loadedmetadata', () => {
-            v.playbackRate = playbackSpeed;
+            v.playbackRate = isAccelerating ? 2.0 : playbackSpeed;
         });
         v.addEventListener('volumechange', () => {
             setIsMuted(v.muted);
@@ -863,6 +994,8 @@ const VideoPlayer: React.FC<{
             v.removeEventListener('loadedmetadata', onLoaded); 
             v.removeEventListener('play', handlePlayEvent);
             v.removeEventListener('pause', handlePauseEvent);
+            v.removeEventListener('enterpictureinpicture', handleEnterPiP);
+            v.removeEventListener('leavepictureinpicture', handleLeavePiP);
         };
     }, [activeVideo.id, isEmbed, lastTime]);
 
@@ -1080,6 +1213,28 @@ const VideoPlayer: React.FC<{
                     />
                 )}
 
+                {/* Zonas interactivas invisibles para eventos táctiles (Aceleración x2 Dinámica) */}
+                <div 
+                    className="absolute left-0 top-20 bottom-32 w-1/4 z-[140] bg-transparent cursor-pointer select-none pointer-events-auto"
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchCancel={handleTouchCancel}
+                />
+                <div 
+                    className="absolute right-0 top-20 bottom-32 w-1/4 z-[140] bg-transparent cursor-pointer select-none pointer-events-auto"
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                    onTouchCancel={handleTouchCancel}
+                />
+
+                {/* Indicador Flotante de Aceleración x2 */}
+                {isAccelerating && (
+                    <div id="playback-speed-indicator" className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur-md border border-red-500/40 px-5 py-2.5 rounded-full text-red-500 font-extrabold text-xs tracking-widest flex items-center gap-2 z-[160] pointer-events-none select-none animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.5)]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping" />
+                        <span>⚡ x2</span>
+                    </div>
+                )}
+
                 {/* Botón Siguiente (Overlay al final o manual) */}
                 {item.type === 'series' && currentEpIndex < episodes.length - 1 && (
                     <button 
@@ -1238,6 +1393,16 @@ const VideoPlayer: React.FC<{
                                     className="bg-red-600 hover:bg-red-700 text-white px-6 md:px-8 py-2 md:py-3 rounded-xl font-bold uppercase tracking-widest transition-all shadow-xl text-xs md:text-sm"
                                 >
                                     Terminar
+                                </button>
+                            )}
+
+                            {!isEmbed && (
+                                <button 
+                                    onClick={togglePiP} 
+                                    className={`transition-all ${isPiPActive ? 'text-red-500 hover:text-red-400 animate-pulse' : 'text-gray-400 hover:text-white'}`} 
+                                    title="Mini Reproductor (Picture-in-Picture)"
+                                >
+                                    <PiPIcon className="w-6 h-6 md:w-8 md:h-8" />
                                 </button>
                             )}
 
