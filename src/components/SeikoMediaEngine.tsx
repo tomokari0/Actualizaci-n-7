@@ -12,6 +12,7 @@ interface SeikoMediaEngineProps {
     onTimeUpdate?: (time: number) => void;
     onDurationChange?: (duration: number) => void;
     videoRef?: React.RefObject<HTMLVideoElement>;
+    subtitles?: { label: string; src: string }[];
 }
 
 const SeikoMediaEngine: React.FC<SeikoMediaEngineProps> = ({ 
@@ -22,7 +23,8 @@ const SeikoMediaEngine: React.FC<SeikoMediaEngineProps> = ({
     autoPlay = true,
     onTimeUpdate,
     onDurationChange,
-    videoRef
+    videoRef,
+    subtitles
 }) => {
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const [hasError, setHasError] = useState(false);
@@ -85,6 +87,7 @@ const SeikoMediaEngine: React.FC<SeikoMediaEngineProps> = ({
                     src={videoUrl} 
                     className="w-full h-full"
                     videoRef={videoRef || { current: null } as any}
+                    subtitles={subtitles}
                 />
             )}
 

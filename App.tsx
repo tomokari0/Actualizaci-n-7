@@ -16,6 +16,7 @@ import ShakaPlayer from './src/components/ShakaPlayer';
 import ProfileSelector from './ProfileSelector';
 import AiAssistant from './src/components/AiAssistant';
 import { useMemoryCleanup } from './src/hooks/useMemoryCleanup';
+import { Subtitles } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -468,6 +469,9 @@ const VideoPlayer: React.FC<{
 
     const [showResumeToast, setShowResumeToast] = useState(false);
     const [resumeTime, setResumeTime] = useState(0);
+    const [showSubtitlesMenu, setShowSubtitlesMenu] = useState(false);
+    const [currentSubtitleIndex, setCurrentSubtitleIndex] = useState<number>(-1);
+
     const lastActiveVideoIdRef = useRef<string | null>(null);
 
     const activeVideo = useMemo(() => {
@@ -488,7 +492,8 @@ const VideoPlayer: React.FC<{
             return { 
                 url, 
                 serverType: data.serverType || 'uploadcare',
-                embedCode: data.embedCode
+                embedCode: data.embedCode,
+                subtitles: data.subtitles || []
             };
         };
 
@@ -501,7 +506,7 @@ const VideoPlayer: React.FC<{
             const data = getData(ep);
             return { ...data, id: `${item.id}_${ep.id}` };
         }
-        return { url: '', serverType: 'uploadcare', id: '', embedCode: '' };
+        return { url: '', serverType: 'uploadcare', id: '', embedCode: '', subtitles: [] };
     }, [item, episodes, currentEpIndex, currentAudio]);
 
     // Track active video and prompt resume if watched before
@@ -577,6 +582,36 @@ const VideoPlayer: React.FC<{
     }, [activeVideo.url]);
 
     const isEmbed = processedUrl.includes('iframe') || processedUrl.includes('uqload.com') || processedUrl.includes('youtube.com') || item.source === 'youtube';
+
+    // Sincronizar subtítulos nativos elegidos
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        const syncTracks = () => {
+            const tracks = video.textTracks;
+            for (let i = 0; i < tracks.length; i++) {
+                if (i === currentSubtitleIndex) {
+                    tracks[i].mode = 'showing';
+                } else {
+                    tracks[i].mode = 'disabled';
+                }
+            }
+        };
+
+        video.addEventListener('loadedmetadata', syncTracks);
+        // También intentar inmediatamente
+        syncTracks();
+
+        return () => {
+            video.removeEventListener('loadedmetadata', syncTracks);
+        };
+    }, [currentSubtitleIndex, activeVideo]);
+
+    useEffect(() => {
+        setCurrentSubtitleIndex(-1);
+        setShowSubtitlesMenu(false);
+    }, [activeVideo.id]);
 
     const [isPiPActive, setIsPiPActive] = useState(false);
     const togglePiP = useCallback(async () => {
@@ -1210,6 +1245,7 @@ const VideoPlayer: React.FC<{
                         embedCode={activeVideo.embedCode}
                         videoRef={videoRef}
                         title={item.title}
+                        subtitles={activeVideo.subtitles}
                     />
                 )}
 
@@ -1406,12 +1442,77 @@ const VideoPlayer: React.FC<{
                                 </button>
                             )}
 
+                            {activeVideo.subtitles && activeVideo.subtitles.length > 0 && (
+                                <button 
+                                    onClick={() => setShowSubtitlesMenu(!showSubtitlesMenu)} 
+                                    className={`transition-all relative ${showSubtitlesMenu || currentSubtitleIndex !== -1 ? 'text-red-500 hover:text-red-400' : 'text-gray-400 hover:text-white'}`} 
+                                    title="Configurar Subtítulos"
+                                >
+                                    <Subtitles className="w-6 h-6 md:w-8 md:h-8" />
+                                    {currentSubtitleIndex !== -1 && (
+                                        <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white font-extrabold text-[8px] px-1 rounded-full border border-black animate-scale-in uppercase tracking-tighter">
+                                            {activeVideo.subtitles[currentSubtitleIndex]?.label.substring(0, 2).toUpperCase()}
+                                        </span>
+                                    )}
+                                </button>
+                            )}
+
                             <button onClick={toggleFullscreen} className="text-gray-400 hover:text-white transition-all" title="Pantalla Completa">
                                 <FullscreenIcon className="w-6 h-6 md:w-8 md:h-8" />
                             </button>
                         </div>
                     </div>
                 </div>
+
+                {/* Menú de Subtítulos (Bottom Sheet / Popup Desplegable Premium) */}
+                {showSubtitlesMenu && activeVideo.subtitles && activeVideo.subtitles.length > 0 && (
+                    <div className="absolute bottom-28 md:bottom-36 right-4 md:right-32 bg-[#0c0c0c]/95 backdrop-blur-xl border border-red-500/30 rounded-2xl p-4 md:p-6 shadow-[0_0_40px_rgba(220,38,38,0.25)] z-[150] w-64 max-w-xs animate-scale-in flex flex-col gap-4 text-left font-sans">
+                        <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                            <h4 className="text-white font-bebas text-lg tracking-wider uppercase flex items-center gap-2">
+                                <Subtitles className="w-4 h-4 text-red-500" />
+                                Subtítulos
+                            </h4>
+                            <button 
+                                onClick={() => setShowSubtitlesMenu(false)}
+                                className="text-gray-500 hover:text-white text-xs font-black uppercase tracking-widest bg-white/5 px-2 py-1 rounded-md transition-colors"
+                            >
+                                Listo
+                            </button>
+                        </div>
+                        
+                        <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto scrollbar-hide pr-1">
+                            {/* Opción Desactivar */}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setCurrentSubtitleIndex(-1);
+                                    setShowSubtitlesMenu(false);
+                                }}
+                                className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs tracking-wider uppercase text-left transition-all ${currentSubtitleIndex === -1 ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'}`}
+                            >
+                                🚫 Desactivados
+                            </button>
+                            
+                            {/* Opciones de idiomas */}
+                            {activeVideo.subtitles.map((sub, index) => (
+                                <button
+                                    key={index}
+                                    type="button"
+                                    onClick={() => {
+                                        setCurrentSubtitleIndex(index);
+                                        setShowSubtitlesMenu(false);
+                                    }}
+                                    className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs tracking-wider uppercase text-left transition-all flex items-center justify-between ${currentSubtitleIndex === index ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'}`}
+                                >
+                                    <span>💬 {sub.label}</span>
+                                    {currentSubtitleIndex === index && (
+                                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {/* Informative Screensaver Overlay */}
                 {showScreensaver && (

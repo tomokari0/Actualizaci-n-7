@@ -6,9 +6,10 @@ interface ShakaPlayerProps {
   className?: string;
   onClose?: () => void;
   videoRef: React.RefObject<HTMLVideoElement>;
+  subtitles?: { label: string; src: string }[];
 }
 
-const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose, videoRef }) => {
+const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose, videoRef, subtitles }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [player, setPlayer] = useState<shaka.Player | null>(null);
 
@@ -89,7 +90,18 @@ const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose, vide
         className="w-full h-full"
         autoPlay
         playsInline
-      />
+        crossOrigin="anonymous"
+      >
+        {subtitles && subtitles.map((sub, index) => (
+          <track
+            key={`${sub.src}_${index}`}
+            label={sub.label}
+            src={sub.src}
+            kind="subtitles"
+            srcLang={sub.label.substring(0, 2).toLowerCase()}
+          />
+        ))}
+      </video>
       {onClose && (
         <button 
           onClick={onClose}

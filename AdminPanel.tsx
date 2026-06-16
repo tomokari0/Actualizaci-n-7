@@ -20,6 +20,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [selectedSeriesId, setSelectedSeriesId] = useState('');
     const [selectedSeasonId, setSelectedSeasonId] = useState('');
     const [showPreview, setShowPreview] = useState(false);
+    const [subtitles, setSubtitles] = useState<{ label: string; src: string }[]>([]);
     
     // Cast members management
     const [allContentList, setAllContentList] = useState<Content[]>([]);
@@ -187,8 +188,8 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         setError(null);
 
         try {
-            if (!formData.title.trim()) throw new Error("El título es obligatorio.");
-            if (!formData.thumbnailUrl.trim()) throw new Error("La miniatura es obligatoria.");
+            if (type !== 'season' && !formData.title.trim()) throw new Error("El título es obligatorio.");
+            if (type !== 'season' && !formData.thumbnailUrl.trim()) throw new Error("La miniatura es obligatoria.");
             
             const filteredTracks: Record<string, string> = {};
             formData.audioTracks.forEach(track => {
@@ -214,7 +215,8 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     duration: formData.duration,
                     skipIntro: Number(formData.skipIntro),
                     createdAt: firestoreTimestamp(),
-                    titleLogoUrl: formData.titleLogoUrl || ""
+                    titleLogoUrl: formData.titleLogoUrl || "",
+                    subtitles: subtitles.filter(sub => sub.label.trim() && sub.src.trim())
                 });
                 alert("¡Episodio añadido con éxito! 🎬");
             } else if (type === 'season') {
@@ -246,7 +248,8 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     status: formData.status,
                     skipIntro: Number(formData.skipIntro),
                     createdAt: firestoreTimestamp(),
-                    titleLogoUrl: formData.titleLogoUrl || ""
+                    titleLogoUrl: formData.titleLogoUrl || "",
+                    subtitles: subtitles.filter(sub => sub.label.trim() && sub.src.trim())
                 };
                 await addDoc(contentRef, newContent);
                 alert(type === 'series' ? "¡Serie creada! 🎉" : "¡Película subida! 🎉");
@@ -732,6 +735,69 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                                             onClick={() => {
                                                                 const newTracks = formData.audioTracks.filter((_, i) => i !== index);
                                                                 setFormData({...formData, audioTracks: newTracks});
+                                                            }}
+                                                            className="p-3 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20"
+                                                        >
+                                                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Subtítulos (Multi-Idioma) */}
+                                        <div className="space-y-4 pt-6 border-t border-white/5">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <label className="text-[10px] text-red-600 uppercase font-black tracking-widest flex items-center gap-2">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-red-600 shadow-[0_0_8px_rgba(255,0,0,0.8)]" />
+                                                    Pistas de Subtítulos (.vtt)
+                                                </label>
+                                                <button 
+                                                    type="button"
+                                                    onClick={() => setSubtitles([...subtitles, { label: 'Español Latino', src: '' }])}
+                                                    className="bg-[#1a1a1a] border border-white/10 hover:border-red-600 text-[10px] font-bold text-gray-400 hover:text-red-600 px-4 py-2 rounded-lg transition-all uppercase tracking-widest flex items-center gap-2"
+                                                >
+                                                    <span className="text-sm">+</span> Añadir Subtítulo
+                                                </button>
+                                            </div>
+                                            
+                                            <div className="space-y-3">
+                                                {subtitles.map((sub, index) => (
+                                                    <div key={index} className="flex gap-3 animate-fade-in group">
+                                                        <input 
+                                                            className="bg-[#1a1a1a] border border-white/10 p-3 rounded-xl text-white text-xs outline-none focus:border-red-600 transition-all w-48 shadow-inner font-bold"
+                                                            value={sub.label}
+                                                            onChange={e => {
+                                                                const newSubs = [...subtitles];
+                                                                newSubs[index].label = e.target.value;
+                                                                setSubtitles(newSubs);
+                                                            }}
+                                                            placeholder="Ej: Español Latino"
+                                                            required
+                                                        />
+                                                        <div className="flex-grow flex gap-2">
+                                                            <input 
+                                                                className="flex-grow bg-[#1a1a1a] border border-white/10 p-3 rounded-xl text-white focus:border-red-600 outline-none transition-all text-xs placeholder:text-gray-600 shadow-inner"
+                                                                value={sub.src}
+                                                                onChange={e => {
+                                                                    const newSubs = [...subtitles];
+                                                                    newSubs[index].src = e.target.value;
+                                                                    setSubtitles(newSubs);
+                                                                }}
+                                                                placeholder="URL del archivo .vtt"
+                                                                required
+                                                            />
+                                                            <Uploader onUploadSuccess={(url) => {
+                                                                const newSubs = [...subtitles];
+                                                                newSubs[index].src = url;
+                                                                setSubtitles(newSubs);
+                                                            }} />
+                                                        </div>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const newSubs = subtitles.filter((_, i) => i !== index);
+                                                                setSubtitles(newSubs);
                                                             }}
                                                             className="p-3 text-gray-600 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all border border-transparent hover:border-red-500/20"
                                                         >
