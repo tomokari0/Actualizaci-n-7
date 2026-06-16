@@ -53,7 +53,19 @@
         "videoUrl": { "type": "string" },
         "thumbnailUrl": { "type": "string" },
         "duration": { "type": "string" },
-        "titleLogoUrl": { "type": "string" }
+        "titleLogoUrl": { "type": "string" },
+        "audioTracks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "languageLabel": { "type": "string" },
+              "audioUrl": { "type": "string" }
+            },
+            "required": ["id", "languageLabel", "audioUrl"]
+          }
+        }
       }
     },
     "CastMember": {

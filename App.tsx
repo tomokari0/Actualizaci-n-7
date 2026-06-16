@@ -16,7 +16,8 @@ import ShakaPlayer from './src/components/ShakaPlayer';
 import ProfileSelector from './ProfileSelector';
 import AiAssistant from './src/components/AiAssistant';
 import { useMemoryCleanup } from './src/hooks/useMemoryCleanup';
-import { Subtitles } from 'lucide-react';
+import { audioPreloadManager } from './src/lib/AudioPreloadManager';
+import { Subtitles, Sun } from 'lucide-react';
 
 declare global {
   interface Window {
@@ -311,6 +312,10 @@ const VideoPlayer: React.FC<{
     const [showControls, setShowControls] = useState(true);
     const [currentTime, setCurrentTime] = useState(0);
     const [isPlaying, setIsPlaying] = useState(true);
+    const isPlayingRef = useRef(isPlaying);
+    useEffect(() => {
+        isPlayingRef.current = isPlaying;
+    }, [isPlaying]);
     const [isMuted, setIsMuted] = useState(false);
     const [volume, setVolume] = useState(1);
     const [duration, setDuration] = useState(0);
@@ -318,6 +323,7 @@ const VideoPlayer: React.FC<{
     const [showSkipNotification, setShowSkipNotification] = useState(false);
     const [playbackSpeed, setPlaybackSpeed] = useState(1);
     const [zoomLevel, setZoomLevel] = useState(1);
+    const [brightness, setBrightness] = useState(100);
     const hasAutoSkippedRef = useRef<string | null>(null);
     const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
     const [showScreensaver, setShowScreensaver] = useState(false);
@@ -325,6 +331,70 @@ const VideoPlayer: React.FC<{
 
     const [isAccelerating, setIsAccelerating] = useState(false);
     const isAcceleratingRef = useRef(false);
+    const isSystemPausingRef = useRef(false);
+
+    const normalizedAudioTracks = useMemo(() => {
+        const data = item.type === 'movie' ? item : episodes[currentEpIndex];
+        if (!data) return [{ id: 'ja', label: '🇯🇵 Audio Original (Japonés)' }];
+        
+        const tracks: Array<{ id: string; label: string; url?: string }> = [];
+        
+        // Always add original (Japanese) track as default
+        tracks.push({ id: 'ja', label: '🇯🇵 Audio Original (Japonés)' });
+
+        if (data.audioTracks) {
+            if (Array.isArray(data.audioTracks)) {
+                // New system: array of objects
+                data.audioTracks.forEach((track: any) => {
+                    tracks.push({
+                        id: track.id,
+                        label: track.languageLabel,
+                        url: track.audioUrl
+                    });
+                });
+            } else if (typeof data.audioTracks === 'object') {
+                // Old system: Map/Object of code -> url
+                Object.entries(data.audioTracks).forEach(([lang, url]) => {
+                    if (lang !== 'ja' && lang !== 'japanese') {
+                        const name = LANGUAGES.find(l => l.code === lang)?.name || lang;
+                        tracks.push({
+                            id: lang,
+                            label: name,
+                            url: url as string
+                        });
+                    }
+                });
+            }
+        }
+        return tracks;
+    }, [item, episodes, currentEpIndex]);
+
+    const activeAudioTrack = useMemo(() => {
+        return normalizedAudioTracks.find(t => t.id === currentAudio);
+    }, [normalizedAudioTracks, currentAudio]);
+
+    const activeAudioLabel = useMemo(() => {
+        const active = normalizedAudioTracks.find(t => t.id === currentAudio);
+        if (!active) return 'AUDIO';
+        
+        const labelLower = active.label.toLowerCase();
+        if (active.id === 'ja' || active.id === 'japanese' || labelLower.includes('japon') || labelLower.includes('japan')) {
+            return 'JAPONÉS';
+        }
+        if (labelLower.includes('latino') || labelLower.includes('doblaje latino') || labelLower.includes('mexic')) {
+            return 'LATINO';
+        }
+        if (labelLower.includes('castellano') || labelLower.includes('español') || labelLower.includes('espanol')) {
+            return 'ESPAÑOL';
+        }
+        if (labelLower.includes('english') || labelLower.includes('ingl')) {
+            return 'ENGLISH';
+        }
+        
+        const emojisRemoved = active.label.replace(/[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, "").trim();
+        const firstWord = emojisRemoved.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ ]/g, '').trim().split(' ')[0];
+        return firstWord ? firstWord.toUpperCase() : active.id.toUpperCase();
+    }, [normalizedAudioTracks, currentAudio]);
     const touchTimeoutRef = useRef<any>(null);
     const isTouchingRef = useRef(false);
     const spacePressedRef = useRef(false);
@@ -477,8 +547,18 @@ const VideoPlayer: React.FC<{
     const activeVideo = useMemo(() => {
         const getData = (data: any) => {
             let url = data.videoUrl || '';
-            if (data.audioTracks && data.audioTracks[currentAudio]) {
-                url = data.audioTracks[currentAudio];
+            
+            // Check if audioTracks is the old map format or the new array format
+            if (data.audioTracks) {
+                if (Array.isArray(data.audioTracks)) {
+                    // New format: We always play the base videoUrl, as audio is in secondary tag.
+                    url = data.videoUrl || '';
+                } else if (typeof data.audioTracks === 'object') {
+                    // Old map format: We load a different video stream URL if exists (except ja)
+                    if (currentAudio !== 'ja' && currentAudio !== 'japanese' && data.audioTracks[currentAudio]) {
+                        url = data.audioTracks[currentAudio];
+                    }
+                }
             }
             
             // Auto-detection as a fallback
@@ -1000,6 +1080,11 @@ const VideoPlayer: React.FC<{
         };
 
         const handlePauseEvent = () => {
+            if (isSystemPausingRef.current) {
+                console.log("[Multi-Audio] Pausa de sistema detectada. Preservando estado isPlaying=true");
+                isSystemPausingRef.current = false;
+                return;
+            }
             setIsPlaying(false);
             if (screensaverTimerRef.current) clearTimeout(screensaverTimerRef.current);
             screensaverTimerRef.current = setTimeout(() => {
@@ -1019,10 +1104,15 @@ const VideoPlayer: React.FC<{
         v.addEventListener('loadedmetadata', () => {
             v.playbackRate = isAccelerating ? 2.0 : playbackSpeed;
         });
-        v.addEventListener('volumechange', () => {
-            setIsMuted(v.muted);
+        const handleVideoVolumeChange = () => {
+            const hasExternal = !isEmbed && !!activeAudioTrack?.url;
+            if (!hasExternal) {
+                setIsMuted(v.muted);
+            }
             setVolume(v.volume);
-        });
+        };
+
+        v.addEventListener('volumechange', handleVideoVolumeChange);
         
         return () => { 
             v.removeEventListener('timeupdate', onTime); 
@@ -1031,8 +1121,9 @@ const VideoPlayer: React.FC<{
             v.removeEventListener('pause', handlePauseEvent);
             v.removeEventListener('enterpictureinpicture', handleEnterPiP);
             v.removeEventListener('leavepictureinpicture', handleLeavePiP);
+            v.removeEventListener('volumechange', handleVideoVolumeChange);
         };
-    }, [activeVideo.id, isEmbed, lastTime]);
+    }, [activeVideo.id, isEmbed, lastTime, activeAudioTrack]);
 
     const handleNext = () => {
         if (currentEpIndex < episodes.length - 1) {
@@ -1074,11 +1165,281 @@ const VideoPlayer: React.FC<{
         setIsAudioMenuOpen(false);
     };
 
+
+
+    // Ensure currentAudio is valid for the current content
+    useEffect(() => {
+        if (normalizedAudioTracks.length > 0) {
+            const exists = normalizedAudioTracks.some(t => t.id === currentAudio);
+            if (!exists) {
+                // Fallback to ja if available
+                const hasJa = normalizedAudioTracks.some(t => t.id === 'ja');
+                setCurrentAudio(hasJa ? 'ja' : normalizedAudioTracks[0].id);
+            }
+        }
+    }, [normalizedAudioTracks, currentAudio]);
+
+    const [isAudioLoading, _setIsAudioLoading] = useState(false);
+    const isAudioLoadingRef = useRef(false);
+    const setIsAudioLoading = (loading: boolean) => {
+        isAudioLoadingRef.current = loading;
+        _setIsAudioLoading(loading);
+    };
+    const audioRef = useRef<HTMLAudioElement>(null);
+
+    // Audio Preloading Logic: Preloads secondary tracks in background when normalizedAudioTracks updates
+    useEffect(() => {
+        if (normalizedAudioTracks && normalizedAudioTracks.length > 0) {
+            audioPreloadManager.preloadTracks(normalizedAudioTracks);
+        }
+    }, [normalizedAudioTracks]);
+
+    // Memory optimization: Clean up preloaded tracks when full content item or episode selection changes or player unmounts
+    useEffect(() => {
+        return () => {
+            audioPreloadManager.cleanup();
+        };
+    }, [item.id, currentEpIndex]);
+
+    // Primary Video Buffering detection to pause background preloading automatically
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video) return;
+
+        const handleWaiting = () => {
+            audioPreloadManager.setBuffering(true);
+        };
+
+        const handlePlaying = () => {
+            audioPreloadManager.setBuffering(false);
+        };
+
+        video.addEventListener('waiting', handleWaiting);
+        video.addEventListener('playing', handlePlaying);
+        video.addEventListener('stalled', handleWaiting);
+        video.addEventListener('canplay', handlePlaying);
+
+        return () => {
+            video.removeEventListener('waiting', handleWaiting);
+            video.removeEventListener('playing', handlePlaying);
+            video.removeEventListener('stalled', handleWaiting);
+            video.removeEventListener('canplay', handlePlaying);
+        };
+    }, [videoRef.current]);
+
+    // Keep audio element muted/volume in sync with React state
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (audio) {
+            audio.muted = isMuted;
+            audio.volume = volume;
+        }
+    }, [isMuted, volume]);
+
+    // Audio / Video strict synchronization & Anti-Lag Correction
+    useEffect(() => {
+        const video = videoRef.current;
+        const audio = audioRef.current;
+        if (!video || !audio || isEmbed || !activeAudioTrack?.url) {
+            if (video) {
+                video.muted = false; // Unmute if no external audio track
+                if (isPlayingRef.current && video.paused) {
+                    video.play().catch(e => console.warn("Failed to play on original audio switch:", e));
+                }
+            }
+            if (audio) {
+                audio.removeAttribute('src');
+                try {
+                    audio.load();
+                } catch (e) {}
+            }
+            setIsAudioLoading(false);
+            return;
+        }
+
+        console.log(`[Multi-Audio] Activando pista de audio: "${activeAudioTrack.label}" (${activeAudioTrack.url})`);
+
+        // Mute video native audio
+        video.muted = true;
+
+        // Immediately set loading to true and pause the video programmatically to wait for audio
+        setIsAudioLoading(true);
+        if (!video.paused) {
+            isSystemPausingRef.current = true;
+            video.pause();
+        }
+
+        // Set audio source - utilizing swift preloaded blob url if ready and video currentTime is in preloaded range
+        const sourceUrl = audioPreloadManager.getPreloadedUrl(activeAudioTrack.id, activeAudioTrack.url, video.currentTime);
+        audio.src = sourceUrl;
+        audio.load();
+
+        let initialSeekCompleted = false;
+        const targetTime = video.currentTime;
+
+        const checkReadyToPlay = () => {
+            // Once initial seek (if any) and buffering are cleared, we are ready
+            if (initialSeekCompleted || targetTime < 0.5) {
+                // Audio is ready to play at correct timestamp, hide loading spinner
+                setIsAudioLoading(false);
+                if (isPlayingRef.current && video.paused) {
+                    isSystemPausingRef.current = false;
+                    video.play().catch(e => console.warn("[MediaSync] Failed to resume video:", e));
+                }
+            }
+        };
+
+        const onMetadata = () => {
+            if (targetTime >= 0.5) {
+                // Seek audio to match video position
+                try {
+                    audio.currentTime = targetTime;
+                } catch (e) {
+                    console.warn("[MediaSync] Initial seek failed on metadata:", e);
+                    initialSeekCompleted = true;
+                    checkReadyToPlay();
+                }
+            } else {
+                initialSeekCompleted = true;
+                checkReadyToPlay();
+            }
+        };
+
+        const onAudioSeeked = () => {
+            if (!initialSeekCompleted && targetTime >= 0.5) {
+                console.log(`[MediaSync] Initial audio seek completed to ${audio.currentTime}s`);
+                initialSeekCompleted = true;
+                checkReadyToPlay();
+            }
+        };
+
+        // If audio already has metadata
+        if (audio.readyState >= 1) {
+            onMetadata();
+        }
+
+        audio.addEventListener('loadedmetadata', onMetadata);
+        audio.addEventListener('canplay', checkReadyToPlay);
+        audio.addEventListener('seeked', onAudioSeeked);
+
+        // Match playback state
+        if (!isPlaying) {
+            audio.pause();
+        }
+
+        const handlePlay = () => {
+            if (isAudioLoadingRef.current) {
+                isSystemPausingRef.current = true;
+                if (!video.paused) {
+                    video.pause();
+                }
+                return;
+            }
+            audio.play().catch(e => console.warn("Audio play error during video play:", e));
+        };
+
+        const handlePause = () => {
+            audio.pause();
+        };
+
+        const handleSeeking = () => {
+            setIsAudioLoading(true);
+            audio.pause();
+        };
+
+        const handleSeeked = () => {
+            // Video seek completed, sync audio to it
+            try {
+                audio.currentTime = video.currentTime;
+            } catch (e) {
+                console.warn("[MediaSync] Seeked error:", e);
+            }
+        };
+
+        // Initialize volume & mute from current React states
+        audio.volume = volume;
+        audio.muted = isMuted;
+
+        video.addEventListener('play', handlePlay);
+        video.addEventListener('pause', handlePause);
+        video.addEventListener('seeking', handleSeeking);
+        video.addEventListener('seeked', handleSeeked);
+
+        let lastSyncTimestamp = 0;
+
+        // Intervalo de Corrección de Desfase (Anti-Lag) con Throttle de 2.5s y mayor de tolerancia (0.35s)
+        const syncInterval = setInterval(() => {
+            if (!video.paused && !isAudioLoadingRef.current && !audio.seeking && audio.readyState >= 2) {
+                const now = Date.now();
+                if (now - lastSyncTimestamp < 2500) {
+                    return; // Throttle to prevent stutter feedback loops
+                }
+
+                // Sincronización proactiva: Si el audio cargado es un Blob parcial y pasamos los 25s,
+                // intercambiamos en caliente al stream directo de la red de forma transparente.
+                const isBlob = audio.src.startsWith('blob:');
+                if (isBlob && video.currentTime >= 25 && !audioPreloadManager.isComplete(activeAudioTrack.id)) {
+                    console.log(`[AudioPreloadManager] Traspasando buffer parcial a stream directo de red para continuar de forma indefinida...`);
+                    setIsAudioLoading(true);
+                    
+                    audio.src = activeAudioTrack.url;
+                    audio.load();
+                    
+                    const handleSwapReady = () => {
+                        try {
+                            audio.currentTime = video.currentTime;
+                        } catch (e) {
+                            console.warn("Failed to seek on swap:", e);
+                        }
+                        setIsAudioLoading(false);
+                        if (!video.paused) {
+                            audio.play().catch(e => console.warn("Failed to play on swap:", e));
+                        }
+                        audio.removeEventListener('canplay', handleSwapReady);
+                    };
+                    audio.addEventListener('canplay', handleSwapReady);
+                    return;
+                }
+
+                const diff = Math.abs(video.currentTime - audio.currentTime);
+                if (diff > 0.35) {
+                    console.log(`[Anti-Lag] Desfase detectado (${diff}s). Sincronizando...`);
+                    lastSyncTimestamp = now;
+                    try {
+                        audio.currentTime = video.currentTime;
+                    } catch (e) {
+                        console.warn("[MediaSync] Anti-Lag correction seek failed:", e);
+                    }
+                }
+            }
+        }, 500);
+
+        return () => {
+            video.removeEventListener('play', handlePlay);
+            video.removeEventListener('pause', handlePause);
+            video.removeEventListener('seeking', handleSeeking);
+            video.removeEventListener('seeked', handleSeeked);
+            audio.removeEventListener('loadedmetadata', onMetadata);
+            audio.removeEventListener('canplay', checkReadyToPlay);
+            audio.removeEventListener('seeked', onAudioSeeked);
+            clearInterval(syncInterval);
+            audio.pause();
+        };
+    }, [activeAudioTrack, isEmbed]);
+
+    const handleAudioWaiting = () => {
+        setIsAudioLoading(true);
+        if (videoRef.current && !videoRef.current.paused) {
+            isSystemPausingRef.current = true;
+            videoRef.current.pause();
+        }
+    };
+
+
+
     const availableTracks = useMemo(() => {
-        const data = item.type === 'movie' ? item : episodes[currentEpIndex];
-        if (!data || !data.audioTracks) return [];
-        return Object.keys(data.audioTracks);
-    }, [item, episodes, currentEpIndex]);
+        return normalizedAudioTracks.map(t => t.id);
+    }, [normalizedAudioTracks]);
 
     return (
         <div ref={playerContainerRef} className="fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center animate-fade-in overflow-hidden cursor-none" style={{ cursor: showControls ? 'default' : 'none' }}>
@@ -1155,6 +1516,26 @@ const VideoPlayer: React.FC<{
                                             ))}
                                         </div>
                                     </div>
+
+                                    <div className="border-t border-white/10 pt-4 mt-4">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <Sun className="w-4 h-4 text-gray-500 animate-pulse" />
+                                                <span className="text-[10px] text-gray-500 uppercase font-black tracking-widest">Brillo</span>
+                                            </div>
+                                            <span className="text-[10px] font-bold text-red-500">{brightness}%</span>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <input 
+                                                type="range" 
+                                                min="30" 
+                                                max="180" 
+                                                value={brightness} 
+                                                onChange={(e) => setBrightness(Number(e.target.value))}
+                                                className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-red-600 focus:outline-none transition-all"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -1165,32 +1546,91 @@ const VideoPlayer: React.FC<{
                     >
                         Visto
                     </button>
-                    {availableTracks.length > 1 && (
+                    {normalizedAudioTracks.length > 1 && (
                         <div ref={audioMenuRef} className="relative">
                             <button 
                                 onClick={() => setIsAudioMenuOpen(!isAudioMenuOpen)}
                                 className="bg-white/10 hover:bg-white/20 text-white p-2 md:p-3 rounded-full transition-all flex items-center gap-2"
                                 title="Idioma de Audio"
                             >
-                                <AudioIcon className="w-5 h-5 md:w-6 md:h-6" />
+                                {isAudioLoading ? (
+                                    <div className="w-5 h-5 md:w-6 md:h-6 flex items-center justify-center">
+                                        <div className="w-4 h-4 md:w-5 md:h-5 rounded-full border-2 border-red-600/30 border-t-red-500 animate-spin" />
+                                    </div>
+                                ) : (
+                                    <AudioIcon className="w-5 h-5 md:w-6 md:h-6" />
+                                )}
                                 <span className="text-[10px] md:text-xs font-bold hidden md:block uppercase tracking-tighter">
-                                    {LANGUAGES.find(t => t.code === currentAudio)?.name || currentAudio}
+                                    {activeAudioLabel}
                                 </span>
                             </button>
                             
+                            {/* Desktop Dropdown Menu */}
                             {isAudioMenuOpen && (
-                                <div className="absolute top-full right-0 mt-2 w-40 md:w-48 bg-black/90 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-2xl animate-scale-in">
-                                    {LANGUAGES.filter(t => availableTracks.includes(t.code)).map(track => (
-                                        <button
-                                            key={track.code}
-                                            onClick={() => handleAudioChange(track.code)}
-                                            className={`w-full text-left px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-bold transition-all flex items-center justify-between ${currentAudio === track.code ? 'text-red-500 bg-red-500/10' : 'text-white hover:bg-white/5'}`}
-                                        >
-                                            {track.name}
-                                            {currentAudio === track.code && <div className="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_10px_#ef4444]" />}
-                                        </button>
-                                    ))}
+                                <div className="hidden md:block absolute top-full mt-2 right-0 w-56 bg-black/95 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden shadow-[0_0_35px_rgba(239,68,68,0.2)] animate-scale-in p-1.5 z-50">
+                                    <div className="px-3 py-1.5 border-b border-white/5 mb-1">
+                                        <span className="text-[9px] text-gray-500 uppercase font-black tracking-widest block">Seleccionar Audio</span>
+                                    </div>
+                                    <div className="max-h-60 overflow-y-auto">
+                                        {normalizedAudioTracks.map(track => (
+                                            <button
+                                                key={track.id}
+                                                onClick={() => {
+                                                    setCurrentAudio(track.id);
+                                                    setIsAudioMenuOpen(false);
+                                                }}
+                                                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-between ${currentAudio === track.id ? 'text-red-500 bg-red-600/10 shadow-[inner_0_0_10px_rgba(239,68,68,0.2)]' : 'text-gray-300 hover:text-white hover:bg-white/5'}`}
+                                            >
+                                                <span className="truncate">{track.label}</span>
+                                                {currentAudio === track.id && (
+                                                    <div className="w-1.5 h-1.5 bg-red-600 rounded-full shadow-[0_0_8px_#ef4444]" />
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
+                            )}
+
+                            {/* Mobile Bottom Sheet Menu */}
+                            {isAudioMenuOpen && (
+                                <>
+                                    {/* Backdrop */}
+                                    <div 
+                                        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250] md:hidden cursor-default animate-fade-in"
+                                        onClick={() => setIsAudioMenuOpen(false)}
+                                    />
+                                    {/* Sheet content */}
+                                    <div className="fixed bottom-0 inset-x-0 bg-[#0c0c0c] border-t border-red-600/40 rounded-t-[25px] p-6 z-[260] md:hidden animate-slide-up shadow-[0_-15px_40px_rgba(239,68,68,0.15)] flex flex-col gap-4">
+                                        <div className="w-10 h-1.5 bg-white/10 rounded-full mx-auto" />
+                                        <div className="text-center">
+                                            <h3 className="text-red-500 text-sm font-bebas tracking-widest uppercase mb-1">Idiomas y Doblajes (FanDub)</h3>
+                                            <p className="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Selecciona una pista de audio</p>
+                                        </div>
+                                        <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+                                            {normalizedAudioTracks.map(track => (
+                                                <button
+                                                    key={track.id}
+                                                    onClick={() => {
+                                                        setCurrentAudio(track.id);
+                                                        setIsAudioMenuOpen(false);
+                                                    }}
+                                                    className={`w-full text-left p-4 rounded-xl text-xs font-bold transition-all flex items-center justify-between border ${currentAudio === track.id ? 'text-red-500 bg-red-500/10 border-red-500/40' : 'text-gray-300 bg-white/5 border-transparent hover:bg-white/10'}`}
+                                                >
+                                                    <span>{track.label}</span>
+                                                    {currentAudio === track.id && (
+                                                        <div className="w-2.5 h-2.5 bg-red-600 rounded-full shadow-[0_0_10px_#ef4444]" />
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <button 
+                                            onClick={() => setIsAudioMenuOpen(false)}
+                                            className="w-full mt-2 py-4 bg-white/5 border border-white/10 hover:border-white/20 text-white font-bold text-xs rounded-xl tracking-widest uppercase transition-all"
+                                        >
+                                            Cerrar
+                                        </button>
+                                    </div>
+                                </>
                             )}
                         </div>
                     )}
@@ -1225,7 +1665,10 @@ const VideoPlayer: React.FC<{
             {/* Contenedor de Video Dinámico */}
             <div 
                 className="w-full h-full relative flex items-center justify-center transition-transform duration-300 ease-out origin-center overflow-hidden" 
-                style={{ transform: `scale(${zoomLevel})` }}
+                style={{ 
+                    transform: `scale(${zoomLevel})`,
+                    filter: `brightness(${brightness}%)`
+                }}
             >
                 {loading ? (
                     <div className="flex flex-col items-center gap-4">
@@ -1239,14 +1682,35 @@ const VideoPlayer: React.FC<{
                         <div className="absolute inset-0 pointer-events-none" />
                     </div>
                 ) : (
-                    <SeikoMediaEngine 
-                        videoUrl={activeVideo.url} 
-                        serverType={activeVideo.serverType as any}
-                        embedCode={activeVideo.embedCode}
-                        videoRef={videoRef}
-                        title={item.title}
-                        subtitles={activeVideo.subtitles}
-                    />
+                    <>
+                        <SeikoMediaEngine 
+                            videoUrl={activeVideo.url} 
+                            serverType={activeVideo.serverType as any}
+                            embedCode={activeVideo.embedCode}
+                            videoRef={videoRef}
+                            title={item.title}
+                            subtitles={activeVideo.subtitles}
+                        />
+                        <audio 
+                            ref={audioRef}
+                            preload="auto"
+                            className="hidden"
+                            onWaiting={handleAudioWaiting}
+                            onStalled={handleAudioWaiting}
+                        />
+                    </>
+                )}
+
+                {isAudioLoading && activeAudioTrack?.url && (
+                    <div className="absolute inset-0 bg-black/75 backdrop-blur-sm z-[150] flex flex-col items-center justify-center animate-fade-in pointer-events-none">
+                        <div className="flex flex-col items-center gap-4">
+                            <div className="w-12 h-12 rounded-full border-4 border-red-600/30 border-t-red-600 animate-spin shadow-[0_0_15px_rgba(239,68,68,0.5)]" />
+                            <div className="text-red-500 font-bebas text-lg tracking-[0.2em] animate-pulse drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]">
+                                Cargando Audio...
+                            </div>
+                            <p className="text-gray-400 text-[10px] uppercase tracking-widest font-black opacity-60">Sincronizando FanDub</p>
+                        </div>
+                    </div>
                 )}
 
                 {/* Zonas interactivas invisibles para eventos táctiles (Aceleración x2 Dinámica) */}
@@ -1301,7 +1765,7 @@ const VideoPlayer: React.FC<{
 
                 {/* Notificación para Reanudar o Reiniciar Reproducción */}
                 {showResumeToast && (
-                    <div className="absolute top-24 right-4 md:right-8 bg-[#0c0c0c]/95 backdrop-blur-md border border-[#ef4444]/40 rounded-xl p-4 md:p-5 shadow-[0_0_25px_rgba(239,68,68,0.25)] z-40 max-w-sm animate-fade-in flex flex-col gap-3">
+                    <div className="absolute top-24 right-4 md:right-8 bg-[#0c0c0c]/95 backdrop-blur-md border border-[#ef4444]/40 rounded-xl p-4 md:p-5 shadow-[0_0_25px_rgba(239,68,68,0.25)] z-[300] max-w-sm animate-fade-in flex flex-col gap-3">
                         <div className="flex items-start gap-3">
                             <div className="w-10 h-10 rounded-lg bg-red-600/10 border border-red-600/30 flex items-center justify-center text-red-500 shrink-0">
                                 <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">

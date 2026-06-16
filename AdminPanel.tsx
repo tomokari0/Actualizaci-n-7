@@ -198,7 +198,18 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 }
             });
 
-                    if (type === 'episode') {
+            const newAudioTracksArray = formData.audioTracks
+                .filter(track => track.lang && track.url)
+                .map(track => {
+                    const matchedLang = LANGUAGES.find(l => l.code === track.lang);
+                    return {
+                        id: track.lang,
+                        languageLabel: matchedLang ? matchedLang.name : track.lang,
+                        audioUrl: track.url
+                    };
+                });
+
+            if (type === 'episode') {
                 if (!selectedSeriesId) throw new Error("Debes seleccionar una serie");
                 if (!selectedSeasonId) throw new Error("Debes seleccionar una temporada");
                 
@@ -210,7 +221,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                     videoUrl: formData.videoUrl,
                     embedCode: formData.embedCode,
                     serverType: formData.serverType,
-                    audioTracks: filteredTracks,
+                    audioTracks: newAudioTracksArray,
                     episodeNumber: Number(formData.episodeNumber),
                     duration: formData.duration,
                     skipIntro: Number(formData.skipIntro),
