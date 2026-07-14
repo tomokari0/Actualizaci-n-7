@@ -95,13 +95,15 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return hasRequiredFields(['id', 'name', 'avatar', 'role', 'email']) &&
-        hasOnlyAllowedFields(['id', 'name', 'avatar', 'role', 'email']) &&
+      return hasRequiredFields(['id', 'name', 'avatar', 'role', 'email', 'termsAccepted', 'termsAcceptedAt']) &&
+        hasOnlyAllowedFields(['id', 'name', 'avatar', 'role', 'email', 'termsAccepted', 'termsAcceptedAt']) &&
         data.id is string && data.id == request.auth.uid &&
         data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
         data.avatar is string && isValidUrl(data.avatar) &&
         data.role in ['user', 'admin'] &&
-        data.email is string && isValidEmail(data.email);
+        data.email is string && isValidEmail(data.email) &&
+        data.termsAccepted is bool && data.termsAccepted == true &&
+        (data.termsAcceptedAt is timestamp || data.termsAcceptedAt is string);
     }
 
     function isValidProfile(data) {
@@ -149,6 +151,10 @@ service cloud.firestore {
         allow create: if isOwner(userId) && isValidProfile(request.resource.data);
         allow update: if isOwner(userId) && isValidProfile(request.resource.data);
         allow delete: if isOwner(userId);
+
+        match /watchProgress/{videoId} {
+          allow read, write: if isOwner(userId);
+        }
       }
     }
 

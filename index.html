@@ -114,6 +114,18 @@
         text-shadow: 2px 2px 0px #000000, -2px -2px 0px #000000, 2px -2px 0px #000000, -2px 2px 0px #000000, 0px 2px 0px #000000, 0px -2px 0px #000000, 2px 0px 0px #000000, -2px 0px 0px #000000, 0 0 10px rgba(0,0,0,0.9) !important;
         border-radius: 4px !important;
       }
+
+      /* Elevate the container to stay clear of the control bar */
+      video::-webkit-media-text-track-container {
+        transform: translateY(-48px) !important;
+        overflow: visible !important;
+      }
+      
+      @media (min-width: 768px) {
+        video::-webkit-media-text-track-container {
+          transform: translateY(-84px) !important;
+        }
+      }
     </style>
 </head>
   <body class="bg-black">

@@ -3,11 +3,12 @@ import React, { useState, useEffect, useRef, createContext, useContext, useMemo,
 import { Content, Episode, Season, UserProfile } from './types';
 import { LANGUAGES, TRANSLATIONS, MOCK_CONTENT } from './constants';
 import { db, isConfigured } from './firebaseConfig';
-import { collection, onSnapshot, query, orderBy, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, getDocs, addDoc, serverTimestamp, doc, setDoc } from "firebase/firestore";
 import AdminPanel from './AdminPanel';
 import ContentUploadForm from './ContentUploadForm';
 import { AuthProvider, useAuth } from './AuthContext';
 import Login from './Login';
+import { TermsModal } from './src/components/TermsModal';
 import ProfileEdit from './ProfileEdit';
 import Footer from './src/components/Footer';
 import SeikoMediaEngine from './src/components/SeikoMediaEngine';
@@ -64,40 +65,104 @@ type WatchProgress = { currentTime: number; duration: number; lastWatched: numbe
 type UserHistoryContextType = {
     watchProgress: Record<string, WatchProgress>;
     updateProgress: (id: string, currentTime: number, duration: number) => void;
+    setActiveProfileId: (id: string | null) => void;
 };
 const UserHistoryContext = createContext<UserHistoryContextType>({
     watchProgress: {},
     updateProgress: () => {},
+    setActiveProfileId: () => {},
 });
 export const useUserHistory = () => useContext(UserHistoryContext);
 export const UserHistoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const { profile: currentProfile } = useAuth();
+    const { user, profile: currentProfile } = useAuth();
     const profileId = currentProfile?.id || 'global';
+    const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
     const [watchProgress, setWatchProgress] = useState<Record<string, WatchProgress>>({});
+    const lastWriteTimeRef = useRef<Record<string, number>>({});
 
     useEffect(() => {
-        const key = `seikotv_watch_progress_${profileId}`;
-        const saved = localStorage.getItem(key);
-        if (saved) {
-            try {
-                setWatchProgress(JSON.parse(saved));
-            } catch {
+        if (!user || !activeProfileId) {
+            const key = `seikotv_watch_progress_${profileId}`;
+            const saved = localStorage.getItem(key);
+            if (saved) {
+                try {
+                    setWatchProgress(JSON.parse(saved));
+                } catch {
+                    setWatchProgress({});
+                }
+            } else {
                 setWatchProgress({});
             }
-        } else {
-            setWatchProgress({});
+            return;
         }
-    }, [profileId]);
+
+        // Setup real-time listener for this active profile's watchProgress subcollection
+        const progressColRef = collection(db, 'usuarios', user.uid, 'perfiles', activeProfileId, 'watchProgress');
+        
+        const unsubscribe = onSnapshot(progressColRef, (snapshot) => {
+            const remoteProgress: Record<string, WatchProgress> = {};
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                remoteProgress[doc.id] = {
+                    currentTime: data.currentTime || 0,
+                    duration: data.duration || 0,
+                    lastWatched: data.lastWatched || 0
+                };
+            });
+            
+            setWatchProgress(remoteProgress);
+
+            // Keep localStorage updated as fallback
+            const key = `seikotv_watch_progress_${activeProfileId}`;
+            localStorage.setItem(key, JSON.stringify(remoteProgress));
+        }, (error) => {
+            console.error("Error listening to watch progress from firestore:", error);
+        });
+
+        return () => unsubscribe();
+    }, [user, activeProfileId, profileId]);
 
     const updateProgress = (id: string, currentTime: number, duration: number) => {
+        const lastWatched = Date.now();
+        const progressObj = { currentTime, duration, lastWatched };
+
+        // 1. Update local state immediately
         setWatchProgress(prev => {
-            const next = { ...prev, [id]: { currentTime, duration, lastWatched: Date.now() } };
-            const key = `seikotv_watch_progress_${profileId}`;
+            const next = { ...prev, [id]: progressObj };
+            const activeId = activeProfileId || profileId;
+            const key = `seikotv_watch_progress_${activeId}`;
             localStorage.setItem(key, JSON.stringify(next));
             return next;
         });
+
+        // 2. Sync to Firestore
+        if (user && activeProfileId) {
+            const lastWriteTime = lastWriteTimeRef.current[id] || 0;
+            const now = Date.now();
+
+            // Write if:
+            // - It's been more than 4 seconds since the last write,
+            // - OR it's the very first progress (currentTime near 0)
+            // - OR the video has finished (currentTime >= duration)
+            if (now - lastWriteTime > 4000 || currentTime === 0 || currentTime >= duration) {
+                lastWriteTimeRef.current[id] = now;
+                const docRef = doc(db, 'usuarios', user.uid, 'perfiles', activeProfileId, 'watchProgress', id);
+                setDoc(docRef, {
+                    currentTime,
+                    duration,
+                    lastWatched
+                }, { merge: true }).catch(err => {
+                    console.error("Error updating watch progress in Firestore:", err);
+                });
+            }
+        }
     };
-    return <UserHistoryContext.Provider value={{ watchProgress, updateProgress }}>{children}</UserHistoryContext.Provider>;
+
+    return (
+        <UserHistoryContext.Provider value={{ watchProgress, updateProgress, setActiveProfileId }}>
+            {children}
+        </UserHistoryContext.Provider>
+    );
 };
 
 // --- ICONS ---
@@ -116,6 +181,13 @@ const ZoomInIcon = ({ className }: { className?: string }) => <svg className={cl
 const SpeedIcon = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
 const RotateCcw = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>;
 const RotateCw = ({ className }: { className?: string }) => <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>;
+const HelpIcon = ({ className }: { className?: string }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+        <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+);
 
 // --- HOOK DE DESCARGAS OFFLINE ---
 const useOfflineDownloads = () => {
@@ -303,6 +375,35 @@ const VideoPlayer: React.FC<{
     const { updateProgress, watchProgress } = useUserHistory();
     const [episodes, setEpisodes] = useState<Episode[]>([]);
     const [currentEpIndex, setCurrentEpIndex] = useState(0);
+
+    const initialIndexSetRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (episodes.length > 0 && initialIndexSetRef.current !== item.id) {
+            initialIndexSetRef.current = item.id;
+            
+            // Find the last watched episode
+            let bestIndex = 0;
+            let latestTime = 0;
+            let lastEpProgressRatio = 0;
+
+            episodes.forEach((ep, idx) => {
+                const progress = watchProgress[`${item.id}_${ep.id}`];
+                if (progress && progress.lastWatched > latestTime) {
+                    latestTime = progress.lastWatched;
+                    bestIndex = idx;
+                    lastEpProgressRatio = progress.currentTime / (progress.duration || 1);
+                }
+            });
+
+            // If the last watched episode is basically finished (>90%), advance to the next episode if available!
+            if (lastEpProgressRatio > 0.90 && bestIndex < episodes.length - 1) {
+                setCurrentEpIndex(bestIndex + 1);
+            } else {
+                setCurrentEpIndex(bestIndex);
+            }
+        }
+    }, [episodes, item.id, watchProgress]);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -333,6 +434,40 @@ const VideoPlayer: React.FC<{
     const isAcceleratingRef = useRef(false);
     const isSystemPausingRef = useRef(false);
 
+    // Binge-Watch / Autoplay State & Refs
+    const [bingeWatchEnabled, setBingeWatchEnabled] = useState(() => {
+        const saved = localStorage.getItem('seikotv_binge_watch');
+        return saved !== 'false'; // Default to true!
+    });
+
+    useEffect(() => {
+        localStorage.setItem('seikotv_binge_watch', String(bingeWatchEnabled));
+    }, [bingeWatchEnabled]);
+
+    const [autoplayCountdown, setAutoplayCountdown] = useState<number | null>(null);
+
+    const bingeWatchEnabledRef = useRef(bingeWatchEnabled);
+    useEffect(() => {
+        bingeWatchEnabledRef.current = bingeWatchEnabled;
+    }, [bingeWatchEnabled]);
+
+    const currentEpIndexRef = useRef(currentEpIndex);
+    useEffect(() => {
+        currentEpIndexRef.current = currentEpIndex;
+    }, [currentEpIndex]);
+
+    const episodesRef = useRef(episodes);
+    useEffect(() => {
+        episodesRef.current = episodes;
+    }, [episodes]);
+
+    const nextEpisode = useMemo(() => {
+        if (item.type === 'series' && currentEpIndex < episodes.length - 1) {
+            return episodes[currentEpIndex + 1];
+        }
+        return null;
+    }, [item, episodes, currentEpIndex]);
+
     const normalizedAudioTracks = useMemo(() => {
         const data = item.type === 'movie' ? item : episodes[currentEpIndex];
         if (!data) return [{ id: 'ja', label: '🇯🇵 Audio Original (Japonés)' }];
@@ -353,14 +488,15 @@ const VideoPlayer: React.FC<{
                     });
                 });
             } else if (typeof data.audioTracks === 'object') {
-                // Old system: Map/Object of code -> url
+                // Old system: Map/Object of code -> video url.
+                // Since this format swaps the primary video file itself (which already includes the raw audio),
+                // we do NOT set the 'url' property here to avoid triggering the secondary <audio> sync engine.
                 Object.entries(data.audioTracks).forEach(([lang, url]) => {
                     if (lang !== 'ja' && lang !== 'japanese') {
                         const name = LANGUAGES.find(l => l.code === lang)?.name || lang;
                         tracks.push({
                             id: lang,
-                            label: name,
-                            url: url as string
+                            label: name
                         });
                     }
                 });
@@ -694,6 +830,7 @@ const VideoPlayer: React.FC<{
     }, [activeVideo.id]);
 
     const [isPiPActive, setIsPiPActive] = useState(false);
+    const [showHelpModal, setShowHelpModal] = useState(false);
     const togglePiP = useCallback(async () => {
         if (!videoRef.current || isEmbed) return;
         try {
@@ -799,6 +936,11 @@ const VideoPlayer: React.FC<{
                             onStateChange: (event: any) => {
                                 if (event.data === (window as any).YT.PlayerState.PLAYING) setIsPlaying(true);
                                 else if (event.data === (window as any).YT.PlayerState.PAUSED) setIsPlaying(false);
+                                else if (event.data === (window as any).YT.PlayerState.ENDED) {
+                                    if (item.type === 'series' && bingeWatchEnabledRef.current && currentEpIndexRef.current < episodesRef.current.length - 1) {
+                                        setAutoplayCountdown(5);
+                                    }
+                                }
                             }
                         }
                     });
@@ -819,10 +961,14 @@ const VideoPlayer: React.FC<{
         setShowControls(true);
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
         idleTimerRef.current = setTimeout(() => {
+            if (isAudioMenuOpen || showSubtitlesMenu || isSettingsOpen) {
+                // Keep controls open if a menu is actively used
+                return;
+            }
             setShowControls(false);
             setIsAudioMenuOpen(false);
         }, 3000);
-    }, []);
+    }, [isAudioMenuOpen, showSubtitlesMenu, isSettingsOpen]);
 
     const resetScreensaver = useCallback(() => {
         setShowScreensaver(false);
@@ -997,6 +1143,12 @@ const VideoPlayer: React.FC<{
                 case 'ArrowLeft':
                     jump(-10);
                     break;
+                case 'KeyH':
+                    setShowHelpModal(prev => !prev);
+                    break;
+                case 'Escape':
+                    setShowHelpModal(false);
+                    break;
             }
         };
 
@@ -1026,7 +1178,7 @@ const VideoPlayer: React.FC<{
             window.removeEventListener('keyup', handleKeyUp);
             if (spaceHoldTimerRef.current) clearTimeout(spaceHoldTimerRef.current);
         };
-    }, [togglePlay, toggleMute, toggleFullscreen, jump, showControls, resetIdleTimer, startAccelerating, stopAccelerating]);
+    }, [togglePlay, toggleMute, toggleFullscreen, jump, showControls, resetIdleTimer, startAccelerating, stopAccelerating, setShowHelpModal]);
 
     const youtubeUrl = useMemo(() => {
         if (item.source === 'youtube' && item.youtubeId) {
@@ -1095,12 +1247,19 @@ const VideoPlayer: React.FC<{
         const handleEnterPiP = () => setIsPiPActive(true);
         const handleLeavePiP = () => setIsPiPActive(false);
 
+        const handleEndedEvent = () => {
+            if (item.type === 'series' && bingeWatchEnabledRef.current && currentEpIndexRef.current < episodesRef.current.length - 1) {
+                setAutoplayCountdown(5);
+            }
+        };
+
         v.addEventListener('timeupdate', onTime);
         v.addEventListener('loadedmetadata', onLoaded);
         v.addEventListener('play', handlePlayEvent);
         v.addEventListener('pause', handlePauseEvent);
         v.addEventListener('enterpictureinpicture', handleEnterPiP);
         v.addEventListener('leavepictureinpicture', handleLeavePiP);
+        v.addEventListener('ended', handleEndedEvent);
         v.addEventListener('loadedmetadata', () => {
             v.playbackRate = isAccelerating ? 2.0 : playbackSpeed;
         });
@@ -1121,9 +1280,46 @@ const VideoPlayer: React.FC<{
             v.removeEventListener('pause', handlePauseEvent);
             v.removeEventListener('enterpictureinpicture', handleEnterPiP);
             v.removeEventListener('leavepictureinpicture', handleLeavePiP);
+            v.removeEventListener('ended', handleEndedEvent);
             v.removeEventListener('volumechange', handleVideoVolumeChange);
         };
     }, [activeVideo.id, isEmbed, lastTime, activeAudioTrack]);
+
+    // Scroll-up and swipe-down event listeners to trigger Picture-in-Picture mode automatically
+    useEffect(() => {
+        if (isPiPActive) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            // deltaY < 0 means wheeling/scrolling up (moving finger/scroll up)
+            if (e.deltaY < -8) {
+                setIsPiPActive(true);
+            }
+        };
+
+        let touchStartY = 0;
+        const handleTouchStart = (e: TouchEvent) => {
+            touchStartY = e.touches[0].clientY;
+        };
+
+        const handleTouchMove = (e: TouchEvent) => {
+            if (isPiPActive) return;
+            const currentY = e.touches[0].clientY;
+            const diffY = currentY - touchStartY; // Positive diffY means swiping downwards (which scrolls up)
+            if (diffY > 60) {
+                setIsPiPActive(true);
+            }
+        };
+
+        window.addEventListener('wheel', handleWheel, { passive: true });
+        window.addEventListener('touchstart', handleTouchStart, { passive: true });
+        window.addEventListener('touchmove', handleTouchMove, { passive: true });
+
+        return () => {
+            window.removeEventListener('wheel', handleWheel);
+            window.removeEventListener('touchstart', handleTouchStart);
+            window.removeEventListener('touchmove', handleTouchMove);
+        };
+    }, [isPiPActive]);
 
     const handleNext = () => {
         if (currentEpIndex < episodes.length - 1) {
@@ -1131,6 +1327,26 @@ const VideoPlayer: React.FC<{
             setCurrentEpIndex(prev => prev + 1);
         }
     };
+
+    // Binge-Watch Autoplay Timer logic
+    useEffect(() => {
+        if (autoplayCountdown === null) return;
+        if (autoplayCountdown <= 0) {
+            setAutoplayCountdown(null);
+            handleNext();
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            setAutoplayCountdown(prev => (prev !== null ? prev - 1 : null));
+        }, 1000);
+
+        return () => clearTimeout(timer);
+    }, [autoplayCountdown, handleNext]);
+
+    useEffect(() => {
+        setAutoplayCountdown(null);
+    }, [currentEpIndex]);
 
     const handleMarkAsWatched = () => {
         // Mark as 100% watched
@@ -1442,9 +1658,19 @@ const VideoPlayer: React.FC<{
     }, [normalizedAudioTracks]);
 
     return (
-        <div ref={playerContainerRef} className="fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center animate-fade-in overflow-hidden cursor-none" style={{ cursor: showControls ? 'default' : 'none' }}>
+        <div 
+            ref={playerContainerRef} 
+            className={`fixed z-[200] group flex flex-col items-center justify-center transition-all duration-500 overflow-hidden ${
+                isPiPActive 
+                    ? 'bottom-6 right-6 w-72 sm:w-96 aspect-video bg-[#0c0c0c] rounded-2xl border-2 border-red-600/30 shadow-[0_20px_50px_rgba(239,68,68,0.25)]' 
+                    : 'inset-0 bg-black cursor-none'
+            }`}
+            style={{ 
+                cursor: (showControls || autoplayCountdown !== null || isPiPActive) ? 'default' : 'none' 
+            }}
+        >
             {/* Cabecera del reproductor */}
-            <div className={`absolute top-0 inset-x-0 h-16 md:h-20 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between px-4 md:px-8 z-10 transition-all duration-700 ease-in-out ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
+            <div className={`absolute top-0 inset-x-0 h-16 md:h-20 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between px-4 md:px-8 z-10 transition-all duration-700 ease-in-out ${(showControls && !isPiPActive) ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}`}>
                 <div className="flex flex-col min-w-0">
                     <span className="text-red-500 font-bebas text-sm md:text-xl tracking-widest uppercase">Reproduciendo</span>
                     <h2 className="text-white font-bold text-sm md:text-2xl truncate max-w-[150px] sm:max-w-md">
@@ -1476,6 +1702,21 @@ const VideoPlayer: React.FC<{
                                             <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:after:w-5 after:transition-all peer-checked:bg-red-600"></div>
                                         </label>
                                     </div>
+
+                                    {item.type === 'series' && (
+                                        <div className="flex items-center justify-between gap-3 mb-4">
+                                            <span className="text-xs font-bold text-white">Modo Binge-Watch (Autoplay)</span>
+                                            <label className="relative inline-flex items-center cursor-pointer">
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="sr-only peer"
+                                                    checked={bingeWatchEnabled}
+                                                    onChange={(e) => setBingeWatchEnabled(e.target.checked)}
+                                                />
+                                                <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                                            </label>
+                                        </div>
+                                    )}
 
                                     <div className="border-t border-white/10 pt-4 mb-4">
                                         <div className="flex items-center gap-2 mb-3">
@@ -1591,49 +1832,16 @@ const VideoPlayer: React.FC<{
                                 </div>
                             )}
 
-                            {/* Mobile Bottom Sheet Menu */}
-                            {isAudioMenuOpen && (
-                                <>
-                                    {/* Backdrop */}
-                                    <div 
-                                        className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250] md:hidden cursor-default animate-fade-in"
-                                        onClick={() => setIsAudioMenuOpen(false)}
-                                    />
-                                    {/* Sheet content */}
-                                    <div className="fixed bottom-0 inset-x-0 bg-[#0c0c0c] border-t border-red-600/40 rounded-t-[25px] p-6 z-[260] md:hidden animate-slide-up shadow-[0_-15px_40px_rgba(239,68,68,0.15)] flex flex-col gap-4">
-                                        <div className="w-10 h-1.5 bg-white/10 rounded-full mx-auto" />
-                                        <div className="text-center">
-                                            <h3 className="text-red-500 text-sm font-bebas tracking-widest uppercase mb-1">Idiomas y Doblajes (FanDub)</h3>
-                                            <p className="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Selecciona una pista de audio</p>
-                                        </div>
-                                        <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
-                                            {normalizedAudioTracks.map(track => (
-                                                <button
-                                                    key={track.id}
-                                                    onClick={() => {
-                                                        setCurrentAudio(track.id);
-                                                        setIsAudioMenuOpen(false);
-                                                    }}
-                                                    className={`w-full text-left p-4 rounded-xl text-xs font-bold transition-all flex items-center justify-between border ${currentAudio === track.id ? 'text-red-500 bg-red-500/10 border-red-500/40' : 'text-gray-300 bg-white/5 border-transparent hover:bg-white/10'}`}
-                                                >
-                                                    <span>{track.label}</span>
-                                                    {currentAudio === track.id && (
-                                                        <div className="w-2.5 h-2.5 bg-red-600 rounded-full shadow-[0_0_10px_#ef4444]" />
-                                                    )}
-                                                </button>
-                                            ))}
-                                        </div>
-                                        <button 
-                                            onClick={() => setIsAudioMenuOpen(false)}
-                                            className="w-full mt-2 py-4 bg-white/5 border border-white/10 hover:border-white/20 text-white font-bold text-xs rounded-xl tracking-widest uppercase transition-all"
-                                        >
-                                            Cerrar
-                                        </button>
-                                    </div>
-                                </>
-                            )}
+
                         </div>
                     )}
+                    <button 
+                        onClick={() => setShowHelpModal(true)} 
+                        className="bg-white/10 hover:bg-white/20 text-white p-2 md:p-3 rounded-full transition-all flex items-center justify-center"
+                        title="Atajos de teclado (H)"
+                    >
+                        <HelpIcon className="w-5 h-5 md:w-6 md:h-6" />
+                    </button>
                     <button 
                         onClick={() => {
                             setIsMenuOpen(!isMenuOpen);
@@ -1656,7 +1864,11 @@ const VideoPlayer: React.FC<{
                             </svg>
                         )}
                     </button>
-                    <button onClick={onClose} className="bg-red-600 hover:bg-red-700 text-white p-2 md:p-3 rounded-full transition-all">
+                    <button 
+                        onClick={() => setIsPiPActive(true)} 
+                        className="bg-red-600 hover:bg-red-700 text-white p-2 md:p-3 rounded-full transition-all"
+                        title="Minimizar (Picture-in-Picture)"
+                    >
                         <svg className="w-5 h-5 md:w-6 md:h-6" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
                     </button>
                 </div>
@@ -1664,7 +1876,7 @@ const VideoPlayer: React.FC<{
 
             {/* Contenedor de Video Dinámico */}
             <div 
-                className="w-full h-full relative flex items-center justify-center transition-transform duration-300 ease-out origin-center overflow-hidden" 
+                className="w-full h-full absolute inset-0 flex items-center justify-center transition-transform duration-300 ease-out origin-center overflow-hidden" 
                 style={{ 
                     transform: `scale(${zoomLevel})`,
                     filter: `brightness(${brightness}%)`
@@ -1712,6 +1924,7 @@ const VideoPlayer: React.FC<{
                         </div>
                     </div>
                 )}
+            </div>
 
                 {/* Zonas interactivas invisibles para eventos táctiles (Aceleración x2 Dinámica) */}
                 <div 
@@ -1739,7 +1952,7 @@ const VideoPlayer: React.FC<{
                 {item.type === 'series' && currentEpIndex < episodes.length - 1 && (
                     <button 
                         onClick={handleNext}
-                        className={`absolute bottom-24 md:bottom-32 right-4 md:right-8 bg-white text-black px-4 md:px-6 py-2 md:py-3 rounded-full font-bold flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all duration-700 ease-in-out shadow-2xl z-20 group ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
+                        className={`absolute bottom-24 md:bottom-32 right-4 md:right-8 bg-white text-black px-4 md:px-6 py-2 md:py-3 rounded-full font-bold flex items-center gap-2 hover:bg-red-500 hover:text-white transition-all duration-700 ease-in-out shadow-2xl z-[165] group ${showControls ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
                     >
                         <span className="text-xs md:text-sm">SIGUIENTE</span>
                         <NextIcon className="w-4 h-4 md:w-5 md:h-5 group-hover:translate-x-1 transition-transform" />
@@ -1747,24 +1960,87 @@ const VideoPlayer: React.FC<{
                 )}
 
                 {/* Botón Omitir Intro */}
-                {showSkipButton && (
+                {showSkipButton && !isPiPActive && (
                     <button 
                         onClick={handleSkipIntro}
-                        className="absolute bottom-24 md:bottom-32 left-4 md:left-8 bg-black/80 text-white px-6 md:px-8 py-3 md:py-4 rounded-lg font-black text-xs md:text-sm tracking-[0.2em] border-2 border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.5)] animate-fade-in hover:scale-105 transition-all z-30 uppercase"
+                        className="absolute bottom-24 md:bottom-32 left-4 md:left-8 bg-black/80 text-white px-6 md:px-8 py-3 md:py-4 rounded-lg font-black text-xs md:text-sm tracking-[0.2em] border-2 border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.5)] animate-fade-in hover:scale-105 transition-all z-[165] uppercase"
                     >
                         Omitir Intro
                     </button>
                 )}
 
                 {/* Notificación Intro Omitida */}
-                {showSkipNotification && (
+                {showSkipNotification && !isPiPActive && (
                     <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md text-white px-6 py-2 rounded-full border border-white/10 text-[10px] font-bold tracking-widest uppercase animate-slide-up z-40">
                         Intro omitida
                     </div>
                 )}
 
+                {/* Countdown de reproducción automática (Binge-Watch Mode) */}
+                {autoplayCountdown !== null && nextEpisode && !isPiPActive && (
+                    <div className="absolute inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] animate-fade-in">
+                        <div className="bg-[#0e0e0e] border border-red-500/40 rounded-2xl p-6 md:p-8 shadow-[0_0_50px_rgba(239,68,68,0.25)] max-w-md w-full mx-4 flex flex-col items-center text-center gap-6">
+                            <div className="flex flex-col items-center gap-1">
+                                <span className="bg-red-500/10 border border-red-500/20 text-red-500 text-[10px] md:text-xs font-black uppercase tracking-[0.25em] px-3 py-1 rounded-full animate-pulse">
+                                    Siguiente episodio en...
+                                </span>
+                            </div>
+
+                            {/* Gran círculo con el número de cuenta atrás pulsante */}
+                            <div className="relative w-24 h-24 flex items-center justify-center">
+                                <div className="absolute inset-0 rounded-full border-4 border-white/5" />
+                                <div className="absolute inset-0 rounded-full border-4 border-red-600 border-t-transparent animate-spin duration-1000" />
+                                <span className="text-white font-bebas text-5xl md:text-6xl tracking-tighter drop-shadow-[0_0_15px_rgba(239,68,68,0.6)] animate-ping absolute">
+                                    {autoplayCountdown}
+                                </span>
+                                <span className="text-white font-bebas text-5xl md:text-6xl tracking-tighter drop-shadow-[0_0_15px_rgba(239,68,68,0.6)]">
+                                    {autoplayCountdown}
+                                </span>
+                            </div>
+
+                            {/* Tarjeta con los detalles del siguiente episodio */}
+                            <div className="w-full bg-white/5 border border-white/10 rounded-xl p-4 flex gap-4 text-left items-center">
+                                {nextEpisode.thumbnailUrl && (
+                                    <div className="relative w-24 aspect-video flex-shrink-0 bg-gray-800 rounded overflow-hidden">
+                                        <img 
+                                            src={nextEpisode.thumbnailUrl} 
+                                            alt={nextEpisode.title}
+                                            className="w-full h-full object-cover"
+                                            referrerPolicy="no-referrer"
+                                        />
+                                    </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-xs text-red-500 font-bold uppercase tracking-wider">Episodio {currentEpIndex + 2}</span>
+                                    <h4 className="text-white font-bold text-sm md:text-base truncate">{nextEpisode.title}</h4>
+                                    <p className="text-xs text-gray-400 truncate">{nextEpisode.description || 'Sin descripción'}</p>
+                                </div>
+                            </div>
+
+                            {/* Botones de acción */}
+                            <div className="flex gap-4 w-full">
+                                <button
+                                    onClick={() => setAutoplayCountdown(null)}
+                                    className="flex-1 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 hover:border-white/20 py-3 rounded-xl text-xs md:text-sm font-black uppercase tracking-wider transition-all active:scale-95"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setAutoplayCountdown(null);
+                                        handleNext();
+                                    }}
+                                    className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-xl text-xs md:text-sm font-black uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)] hover:scale-[1.02] active:scale-95"
+                                >
+                                    Reproducir Ya
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* Notificación para Reanudar o Reiniciar Reproducción */}
-                {showResumeToast && (
+                {showResumeToast && !isPiPActive && (
                     <div className="absolute top-24 right-4 md:right-8 bg-[#0c0c0c]/95 backdrop-blur-md border border-[#ef4444]/40 rounded-xl p-4 md:p-5 shadow-[0_0_25px_rgba(239,68,68,0.25)] z-[300] max-w-sm animate-fade-in flex flex-col gap-3">
                         <div className="flex items-start gap-3">
                             <div className="w-10 h-10 rounded-lg bg-red-600/10 border border-red-600/30 flex items-center justify-center text-red-500 shrink-0">
@@ -1928,9 +2204,9 @@ const VideoPlayer: React.FC<{
                     </div>
                 </div>
 
-                {/* Menú de Subtítulos (Bottom Sheet / Popup Desplegable Premium) */}
+                {/* Menú de Subtítulos (Desktop/Laptop Layout) */}
                 {showSubtitlesMenu && activeVideo.subtitles && activeVideo.subtitles.length > 0 && (
-                    <div className="absolute bottom-28 md:bottom-36 right-4 md:right-32 bg-[#0c0c0c]/95 backdrop-blur-xl border border-red-500/30 rounded-2xl p-4 md:p-6 shadow-[0_0_40px_rgba(220,38,38,0.25)] z-[150] w-64 max-w-xs animate-scale-in flex flex-col gap-4 text-left font-sans">
+                    <div className="hidden md:flex absolute bottom-36 right-32 bg-[#0c0c0c]/95 backdrop-blur-xl border border-red-500/30 rounded-2xl p-6 shadow-[0_0_40px_rgba(220,38,38,0.25)] z-[230] w-64 max-w-xs animate-scale-in flex-col gap-4 text-left font-sans">
                         <div className="flex justify-between items-center border-b border-white/5 pb-2">
                             <h4 className="text-white font-bebas text-lg tracking-wider uppercase flex items-center gap-2">
                                 <Subtitles className="w-4 h-4 text-red-500" />
@@ -1976,6 +2252,105 @@ const VideoPlayer: React.FC<{
                             ))}
                         </div>
                     </div>
+                )}
+
+                {/* Mobile Bottom Sheet Menu for Subtitles */}
+                {showSubtitlesMenu && activeVideo.subtitles && activeVideo.subtitles.length > 0 && !isPiPActive && (
+                    <>
+                        {/* Backdrop */}
+                        <div 
+                            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250] md:hidden cursor-default animate-fade-in"
+                            onClick={() => setShowSubtitlesMenu(false)}
+                        />
+                        {/* Sheet content */}
+                        <div className="fixed bottom-0 left-0 right-0 max-w-xl mx-auto w-full bg-[#0c0c0c] border-t border-red-600/40 rounded-t-[25px] p-6 z-[260] md:hidden animate-slide-up shadow-[0_-15px_40px_rgba(239,68,68,0.15)] flex flex-col gap-4">
+                            <div className="w-10 h-1.5 bg-white/10 rounded-full mx-auto" />
+                            <div className="text-center">
+                                <h3 className="text-red-500 text-sm font-bebas tracking-widest uppercase mb-1">Subtítulos</h3>
+                                <p className="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Selecciona el idioma de los subtítulos</p>
+                            </div>
+                            <div className="grid grid-cols-1 min-[450px]:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1">
+                                {/* Opción Desactivar */}
+                                <button
+                                    onClick={() => {
+                                        setCurrentSubtitleIndex(-1);
+                                        setShowSubtitlesMenu(false);
+                                    }}
+                                    className={`w-full text-left p-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-between gap-3 border ${currentSubtitleIndex === -1 ? 'text-red-500 bg-red-500/10 border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'text-gray-300 bg-white/5 border-transparent hover:bg-white/10 hover:text-white'}`}
+                                >
+                                    <span className="truncate">🚫 Desactivados</span>
+                                    {currentSubtitleIndex === -1 && (
+                                        <div className="w-2.5 h-2.5 bg-red-600 rounded-full shadow-[0_0_10px_#ef4444] shrink-0" />
+                                    )}
+                                </button>
+                                
+                                {/* Opciones de idiomas */}
+                                {activeVideo.subtitles.map((sub, index) => (
+                                    <button
+                                        key={index}
+                                        onClick={() => {
+                                            setCurrentSubtitleIndex(index);
+                                            setShowSubtitlesMenu(false);
+                                        }}
+                                        className={`w-full text-left p-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-between gap-3 border ${currentSubtitleIndex === index ? 'text-red-500 bg-red-500/10 border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'text-gray-300 bg-white/5 border-transparent hover:bg-white/10 hover:text-white'}`}
+                                    >
+                                        <span className="truncate">💬 {sub.label}</span>
+                                        {currentSubtitleIndex === index && (
+                                            <div className="w-2.5 h-2.5 bg-red-600 rounded-full shadow-[0_0_10px_#ef4444] shrink-0 animate-scale-in" />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                            <button 
+                                onClick={() => setShowSubtitlesMenu(false)}
+                                className="w-full mt-2 py-4 bg-white/5 border border-white/15 hover:border-white/20 text-white font-bold text-xs rounded-xl tracking-widest uppercase transition-all"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </>
+                )}
+
+                {/* Mobile Bottom Sheet Menu for Audio Track Selection */}
+                {isAudioMenuOpen && normalizedAudioTracks.length > 1 && !isPiPActive && (
+                    <>
+                        {/* Backdrop */}
+                        <div 
+                            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[250] md:hidden cursor-default animate-fade-in"
+                            onClick={() => setIsAudioMenuOpen(false)}
+                        />
+                        {/* Sheet content */}
+                        <div className="fixed bottom-0 left-0 right-0 max-w-xl mx-auto w-full bg-[#0c0c0c] border-t border-red-600/40 rounded-t-[25px] p-6 z-[260] md:hidden animate-slide-up shadow-[0_-15px_40px_rgba(239,68,68,0.15)] flex flex-col gap-4">
+                            <div className="w-10 h-1.5 bg-white/10 rounded-full mx-auto" />
+                            <div className="text-center">
+                                <h3 className="text-red-500 text-sm font-bebas tracking-widest uppercase mb-1">Idiomas y Doblajes (FanDub)</h3>
+                                <p className="text-gray-500 text-[10px] uppercase tracking-widest font-bold">Selecciona una pista de audio</p>
+                            </div>
+                            <div className="grid grid-cols-1 min-[450px]:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1">
+                                {normalizedAudioTracks.map(track => (
+                                    <button
+                                        key={track.id}
+                                        onClick={() => {
+                                            setCurrentAudio(track.id);
+                                            setIsAudioMenuOpen(false);
+                                        }}
+                                        className={`w-full text-left p-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-between gap-3 border ${currentAudio === track.id ? 'text-red-500 bg-red-500/10 border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'text-gray-300 bg-white/5 border-transparent hover:bg-white/10 hover:text-white'}`}
+                                    >
+                                        <span className="break-words line-clamp-2 pr-1 flex-1 text-left">{track.label}</span>
+                                        {currentAudio === track.id && (
+                                            <div className="w-2.5 h-2.5 bg-red-600 rounded-full shadow-[0_0_10px_#ef4444] shrink-0 animate-scale-in" />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                            <button 
+                                onClick={() => setIsAudioMenuOpen(false)}
+                                className="w-full mt-2 py-4 bg-white/5 border border-white/10 hover:border-white/20 text-white font-bold text-xs rounded-xl tracking-widest uppercase transition-all"
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+                    </>
                 )}
 
                 {/* Informative Screensaver Overlay */}
@@ -2038,10 +2413,9 @@ const VideoPlayer: React.FC<{
                         </div>
                     </div>
                 )}
-            </div>
 
             {/* MENÚ DE DETALLES Y EPISODIOS (Lateral deslizable) */}
-            <div className={`fixed right-0 top-0 bottom-0 w-full sm:w-80 bg-black/95 backdrop-blur-xl border-l border-white/10 z-[210] transition-transform duration-500 shadow-2xl p-6 overflow-y-auto ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+            <div className={`fixed right-0 top-0 bottom-0 w-full sm:w-80 bg-black/95 backdrop-blur-xl border-l border-white/10 z-[210] transition-transform duration-500 shadow-2xl p-6 overflow-y-auto ${(isMenuOpen && !isPiPActive) ? 'translate-x-0' : 'translate-x-full'}`}>
                 <div className="flex justify-between items-center mb-4 border-b border-white/10 pb-4">
                     <h3 className="font-bebas text-2xl text-red-500 tracking-wider">
                         {item.type === 'series' ? 'Detalles & Episodios' : 'Detalles & Reparto'}
@@ -2086,7 +2460,7 @@ const VideoPlayer: React.FC<{
                                 <div 
                                     key={`${ep.id}-${idx}`}
                                     onClick={() => { setCurrentEpIndex(idx); setIsMenuOpen(false); }}
-                                    className={`group cursor-pointer p-3 rounded-lg border transition-all ${currentEpIndex === idx ? 'bg-red-600/20 border-red-600' : 'bg-white/5 border-transparent hover:border-white/20'}`}
+                                    className={`group cursor-pointer p-3 rounded-lg border transition-all ${currentEpIndex === idx ? 'bg-red-950/30 border-red-500 shadow-[0_0_15px_rgba(255,0,0,0.6)] ring-1 ring-red-500/50 animate-pulse' : 'bg-white/5 border-transparent hover:border-white/20'}`}
                                 >
                                     <div className="flex gap-3">
                                         <div className="relative w-24 aspect-video flex-shrink-0 bg-gray-800 rounded overflow-hidden">
@@ -2232,6 +2606,135 @@ const VideoPlayer: React.FC<{
                     </div>
                 )}
             </div>
+
+            {isPiPActive && (
+                <div className="absolute inset-0 bg-black/65 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-3.5 z-30 select-none">
+                    {/* Mini Header */}
+                    <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-bold text-white truncate max-w-[150px] bg-black/50 px-2 py-1 rounded border border-white/5 font-sans uppercase tracking-wider">
+                            {item.title}
+                        </span>
+                        <div className="flex gap-2">
+                            {/* Expand Button */}
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsPiPActive(false);
+                                }}
+                                className="w-7 h-7 bg-black/60 hover:bg-red-600 rounded-full flex items-center justify-center text-white transition-all transform active:scale-90 border border-white/10"
+                                title="Volver a Pantalla Completa"
+                            >
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75v4.5m0-4.5h-4.5m4.5 0L15 9m5.25 11.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />
+                                </svg>
+                            </button>
+                            {/* Close Button */}
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onClose();
+                                }}
+                                className="w-7 h-7 bg-black/60 hover:bg-red-600 rounded-full flex items-center justify-center text-white transition-all transform active:scale-90 border border-white/10"
+                                title="Cerrar"
+                            >
+                                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Mini Center Play/Pause button */}
+                    <div className="flex justify-center items-center">
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                togglePlay();
+                            }}
+                            className="w-10 h-10 bg-red-600 hover:bg-red-700 text-white rounded-full flex items-center justify-center shadow-lg transition-all transform active:scale-90 hover:scale-105"
+                        >
+                            {isPlaying ? (
+                                <PauseIcon className="w-5 h-5 text-white" />
+                            ) : (
+                                <PlayIcon className="w-5 h-5 text-white ml-0.5" />
+                            )}
+                        </button>
+                    </div>
+
+                    {/* Mini progress bar at the bottom */}
+                    <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
+                        <div 
+                            className="h-full bg-red-600 transition-all duration-150"
+                            style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {showHelpModal && !isPiPActive && (
+                <div 
+                    className="absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[310] animate-fade-in"
+                    onClick={() => setShowHelpModal(false)}
+                >
+                    <div 
+                        className="bg-[#0c0c0c] border border-red-600/30 rounded-2xl p-6 md:p-8 shadow-[0_0_50px_rgba(239,68,68,0.25)] max-w-md w-full mx-4 flex flex-col gap-6 relative animate-scale-in"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header */}
+                        <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-red-600/10 border border-red-600/30 flex items-center justify-center text-red-500">
+                                    <HelpIcon className="w-5 h-5" />
+                                </div>
+                                <h4 className="text-white font-bebas text-2xl tracking-wider uppercase">
+                                    Atajos de Teclado
+                                </h4>
+                            </div>
+                            <button 
+                                onClick={() => setShowHelpModal(false)}
+                                className="text-gray-400 hover:text-white transition-colors"
+                                title="Cerrar"
+                            >
+                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+
+                        {/* Shortcuts list */}
+                        <div className="flex flex-col gap-3.5 max-h-[60vh] overflow-y-auto pr-1">
+                            {[
+                                { keys: ['Espacio'], desc: 'Reproducir / Pausar (Mantener para Velocidad 2x)' },
+                                { keys: ['▶', 'Flecha Derecha'], desc: 'Adelantar 10 segundos' },
+                                { keys: ['◀', 'Flecha Izquierda'], desc: 'Retroceder 10 segundos' },
+                                { keys: ['M'], desc: 'Silenciar / Activar sonido' },
+                                { keys: ['F'], desc: 'Alternar Pantalla Completa' },
+                                { keys: ['H'], desc: 'Mostrar / Ocultar esta ayuda' },
+                                { keys: ['Esc'], desc: 'Cerrar esta ayuda o menús' },
+                            ].map((shortcut, idx) => (
+                                <div key={idx} className="flex items-center justify-between gap-4 py-1.5 border-b border-white/5 last:border-0">
+                                    <span className="text-gray-400 text-xs font-semibold">{shortcut.desc}</span>
+                                    <div className="flex gap-1.5 shrink-0">
+                                        {shortcut.keys.map((key, keyIdx) => (
+                                            <kbd 
+                                                key={keyIdx} 
+                                                className="bg-white/5 border border-white/10 px-2.5 py-1 rounded text-white font-mono text-[10px] font-bold shadow-md uppercase tracking-wider min-w-[30px] text-center"
+                                            >
+                                                {key}
+                                            </kbd>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Footer info */}
+                        <div className="text-center text-[10px] text-gray-500 font-medium">
+                            Presiona <span className="text-red-500 font-bold font-mono bg-red-600/10 px-1 py-0.5 rounded border border-red-600/20">H</span> en cualquier momento del reproductor para abrir este menú
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -2322,9 +2825,9 @@ type Page = 'home' | 'movies' | 'series' | 'downloads' | 'comunidad';
 type Filter = 'all' | 'recent' | 'popular' | 'following' | 'ongoing';
 
 const MainApp: React.FC = () => {
-    const { profile: currentProfile, isAdmin, loading } = useAuth();
+    const { profile: currentProfile, isAdmin, loading, needsTermsAcceptance } = useAuth();
     const { t } = useLanguage();
-    const { watchProgress } = useUserHistory();
+    const { watchProgress, setActiveProfileId } = useUserHistory();
     const { downloadedUrls, downloading, downloadVideo, removeDownload } = useOfflineDownloads();
 
     const [currentPage, setCurrentPage] = useState<Page>('home');
@@ -2333,6 +2836,94 @@ const MainApp: React.FC = () => {
     useMemoryCleanup(currentPage);
     const [activeFilter, setActiveFilter] = useState<Filter>('all');
     const [contentList, setContentList] = useState<Content[]>(MOCK_CONTENT);
+
+    const continueWatchingList = useMemo(() => {
+        const itemsWithProgress: Array<{ item: Content; lastWatched: number }> = [];
+
+        contentList?.forEach(item => {
+            if (item.type === 'movie') {
+                const progress = watchProgress[item.id];
+                if (progress && progress.currentTime > 0) {
+                    const ratio = progress.currentTime / (progress.duration || 1);
+                    if (ratio > 0.01 && ratio < 0.95) {
+                        itemsWithProgress.push({
+                            item,
+                            lastWatched: progress.lastWatched || 0,
+                        });
+                    }
+                }
+            } else if (item.type === 'series') {
+                let latestEpProgress: any = null;
+                let latestEpId = '';
+                let latestEpIndex = -1;
+
+                const seriesEpisodes = item.seasons?.[0]?.episodes || [];
+
+                Object.keys(watchProgress).forEach(key => {
+                    if (key.startsWith(`${item.id}_`)) {
+                        const progress = watchProgress[key];
+                        if (progress && progress.currentTime > 0) {
+                            if (!latestEpProgress || progress.lastWatched > latestEpProgress.lastWatched) {
+                                latestEpProgress = progress;
+                                latestEpId = key.substring(item.id.length + 1);
+                            }
+                        }
+                    }
+                });
+
+                if (latestEpProgress) {
+                    if (seriesEpisodes.length > 0) {
+                        latestEpIndex = seriesEpisodes.findIndex(ep => ep.id === latestEpId);
+                    }
+
+                    const ratio = latestEpProgress.currentTime / (latestEpProgress.duration || 1);
+                    if (ratio < 0.90) {
+                        itemsWithProgress.push({
+                            item,
+                            lastWatched: latestEpProgress.lastWatched || 0,
+                        });
+                    } else {
+                        if (latestEpIndex !== -1 && latestEpIndex < seriesEpisodes.length - 1) {
+                            itemsWithProgress.push({
+                                item,
+                                lastWatched: latestEpProgress.lastWatched || 0,
+                            });
+                        }
+                    }
+                }
+            }
+        });
+
+        return itemsWithProgress
+            .sort((a, b) => b.lastWatched - a.lastWatched)
+            .map(x => x.item);
+    }, [contentList, watchProgress]);
+
+    const getLatestProgress = useCallback((item: Content) => {
+        if (item.type === 'movie') {
+            const progress = watchProgress[item.id];
+            if (progress && progress.currentTime > 0) {
+                return (progress.currentTime / (progress.duration || 1)) * 100;
+            }
+        } else if (item.type === 'series') {
+            let latestEpProgress: any = null;
+            Object.keys(watchProgress).forEach(key => {
+                if (key.startsWith(`${item.id}_`)) {
+                    const progress = watchProgress[key];
+                    if (progress && progress.currentTime > 0) {
+                        if (!latestEpProgress || progress.lastWatched > latestEpProgress.lastWatched) {
+                            latestEpProgress = progress;
+                        }
+                    }
+                }
+            });
+            if (latestEpProgress) {
+                const ratio = latestEpProgress.currentTime / (latestEpProgress.duration || 1);
+                return ratio * 100;
+            }
+        }
+        return undefined;
+    }, [watchProgress]);
     const [selectedVideo, setSelectedVideo] = useState<Content | null>(null);
     const [isAdminOpen, setIsAdminOpen] = useState(false);
     const [isUploadFormOpen, setIsUploadFormOpen] = useState(false);
@@ -2345,6 +2936,11 @@ const MainApp: React.FC = () => {
     const [searchResults, setSearchResults] = useState<Content[]>([]);
     const [isSearching, setIsSearching] = useState(false);
     const [showFeedback, setShowFeedback] = useState(false);
+    
+    // Voice Search States and Handler
+    const [isListening, setIsListening] = useState(false);
+    const [voiceSearchError, setVoiceSearchError] = useState('');
+    const recognitionRef = useRef<any>(null);
     
     // Search history and input focus states
     const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -2363,6 +2959,10 @@ const MainApp: React.FC = () => {
             return null;
         }
     });
+
+    useEffect(() => {
+        setActiveProfileId(activeProfile?.id || null);
+    }, [activeProfile, setActiveProfileId]);
 
     const handleProfileSelect = (profile: UserProfile) => {
         setActiveProfile(profile);
@@ -2568,6 +3168,58 @@ const MainApp: React.FC = () => {
         performSearch(searchQuery);
     };
 
+    const toggleVoiceSearch = useCallback(() => {
+        if (isListening) {
+            if (recognitionRef.current) {
+                recognitionRef.current.stop();
+            }
+            setIsListening(false);
+            return;
+        }
+
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert("Tu navegador no soporta la API de reconocimiento de voz (Speech Recognition). Intenta con Google Chrome.");
+            return;
+        }
+
+        try {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'es-ES';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onstart = () => {
+                setIsListening(true);
+                setVoiceSearchError('');
+            };
+
+            recognition.onerror = (event: any) => {
+                console.error("Speech recognition error:", event.error);
+                setVoiceSearchError(event.error);
+                setIsListening(false);
+            };
+
+            recognition.onend = () => {
+                setIsListening(false);
+            };
+
+            recognition.onresult = (event: any) => {
+                const transcript = event.results[0][0].transcript;
+                if (transcript) {
+                    setSearchQuery(transcript);
+                    performSearch(transcript);
+                }
+            };
+
+            recognitionRef.current = recognition;
+            recognition.start();
+        } catch (err) {
+            console.error("Failed to start speech recognition:", err);
+            setIsListening(false);
+        }
+    }, [isListening, performSearch]);
+
     useEffect(() => {
         if (!isConfigured) return;
         const q = query(collection(db, "content"), orderBy("createdAt", "desc"));
@@ -2629,6 +3281,10 @@ const MainApp: React.FC = () => {
         );
     }
 
+    if (needsTermsAcceptance) {
+        return <TermsModal />;
+    }
+
     if (!currentProfile) {
         return <Login />;
     }
@@ -2678,11 +3334,19 @@ const MainApp: React.FC = () => {
                             className="w-full bg-white/5 border border-white/10 px-12 py-2.5 rounded-full text-sm focus:bg-white/10 focus:border-red-600 outline-none transition-all placeholder:text-gray-500"
                         />
                         <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 group-focus-within:text-red-500 transition-colors" />
-                        {isSearching && (
-                            <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10">
+                            {isSearching && (
                                 <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-                            </div>
-                        )}
+                            )}
+                            <button
+                                type="button"
+                                onClick={toggleVoiceSearch}
+                                title="Búsqueda por voz"
+                                className={`p-1.5 rounded-full hover:bg-white/10 transition-all flex items-center justify-center cursor-pointer ${isListening ? 'text-red-500 animate-pulse bg-red-500/20 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'text-gray-400 hover:text-white'}`}
+                            >
+                                <AudioIcon className="w-4 h-4" />
+                            </button>
+                        </div>
                     </form>
 
                     {/* Búsquedas Recientes Dropdown */}
@@ -2804,6 +3468,19 @@ const MainApp: React.FC = () => {
                         className="w-full bg-white/10 border border-white/20 px-12 py-3 rounded-xl text-sm focus:border-red-600 outline-none transition-all"
                     />
                     <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2 z-10">
+                        {isSearching && (
+                            <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+                        )}
+                        <button
+                            type="button"
+                            onClick={toggleVoiceSearch}
+                            title="Búsqueda por voz"
+                            className={`p-1.5 rounded-full hover:bg-white/10 transition-all flex items-center justify-center cursor-pointer ${isListening ? 'text-red-500 animate-pulse bg-red-500/20 shadow-[0_0_8px_rgba(239,68,68,0.6)]' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            <AudioIcon className="w-5 h-5" />
+                        </button>
+                    </div>
                 </form>
 
                 {/* Mobile Search History */}
@@ -3167,6 +3844,24 @@ const MainApp: React.FC = () => {
                         </div>
                     )}
 
+                    {searchResults.length === 0 && currentPage === 'home' && continueWatchingList.length > 0 && (
+                        <div className="mb-16 animate-fade-in">
+                            <h3 className="text-2xl md:text-4xl font-bebas text-white tracking-[0.2em] uppercase border-l-4 md:border-l-8 border-red-600 pl-4 md:pl-6 mb-8 font-sans">
+                                Continuar viendo
+                            </h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-8">
+                                {continueWatchingList.map((item, idx) => (
+                                    <ContentCard 
+                                        key={`continue-${item.id}-${idx}`} 
+                                        item={item} 
+                                        onPlay={() => setSelectedVideo(item)} 
+                                        progress={getLatestProgress(item)} 
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 md:gap-6 mb-8 md:mb-12">
                         <h3 className="text-2xl md:text-4xl font-bebas text-white tracking-[0.2em] uppercase border-l-4 md:border-l-8 border-red-600 pl-4 md:pl-6">
                             {currentPage === 'movies' ? 'Todas las Películas' : currentPage === 'series' ? 'Series SeikoTV' : 'Nuestras Recomendaciones'}
@@ -3238,6 +3933,22 @@ const MainApp: React.FC = () => {
             {isProfileEditOpen && <ProfileEdit activeProfile={activeProfile} onClose={() => setIsProfileEditOpen(false)} />}
             {showFeedback && currentProfile && <FeedbackToast userId={currentProfile.id} onClose={() => setShowFeedback(false)} />}
             <AiAssistant />
+
+            {/* Voice Search active listening notification */}
+            {isListening && (
+                <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] bg-black/95 border border-red-600/30 px-6 py-4 rounded-2xl flex items-center gap-4 shadow-[0_0_30px_rgba(239,68,68,0.25)] animate-bounce select-none">
+                    <div className="relative flex items-center justify-center h-10 w-10">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-8 w-8 bg-red-600 items-center justify-center">
+                            <AudioIcon className="w-4 h-4 text-white animate-pulse" />
+                        </span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-xs font-black text-white uppercase tracking-wider">Escuchando voz...</span>
+                        <span className="text-[10px] text-gray-400 uppercase tracking-widest mt-0.5">Habla ahora para buscar</span>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

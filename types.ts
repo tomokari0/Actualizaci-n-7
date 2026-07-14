@@ -91,4 +91,6 @@ export interface UserProfile {
   streak?: number;
   lastLogin?: string; // ISO date string
   totalWatchTime?: number; // Total seconds watched
+  termsAccepted?: boolean;
+  termsAcceptedAt?: any; // ISO string or Firestore timestamp
 }

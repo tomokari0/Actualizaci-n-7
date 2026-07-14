@@ -37,6 +37,9 @@ const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose, vide
   }, []);
 
   useEffect(() => {
+    let activePlayer: shaka.Player | null = null;
+    const previousTime = videoRef.current ? videoRef.current.currentTime : 0;
+
     const initPlayer = async () => {
       if (!videoRef.current) return;
 
@@ -44,11 +47,17 @@ const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose, vide
       shaka.polyfill.installAll();
 
       if (!shaka.Player.isBrowserSupported()) {
-        console.error('Browser not supported for Shaka Player');
+        console.warn('Browser not supported for Shaka Player, playing natively');
+        videoRef.current.src = src;
+        if (previousTime > 0) {
+          videoRef.current.currentTime = previousTime;
+        }
         return;
       }
 
       const newPlayer = new shaka.Player(videoRef.current);
+      activePlayer = newPlayer;
+      setPlayer(newPlayer);
       
       // Aggressive buffering configuration
       newPlayer.configure({
@@ -64,21 +73,46 @@ const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose, vide
         },
       });
 
-      setPlayer(newPlayer);
-
       try {
         await newPlayer.load(src);
         console.log('Video loaded successfully with Shaka Player');
+        if (videoRef.current && previousTime > 0) {
+          videoRef.current.currentTime = previousTime;
+        }
       } catch (error) {
-        console.error('Error loading video:', error);
+        console.error('Error loading video with Shaka Player, falling back to native native video element:', error);
+        // Fallback to native HTML5 video player
+        if (videoRef.current) {
+          try {
+            await newPlayer.unload();
+          } catch (unloadErr) {}
+          
+          videoRef.current.src = src;
+          if (previousTime > 0) {
+            const handleLoadedMetadata = () => {
+              if (videoRef.current) {
+                videoRef.current.currentTime = previousTime;
+                videoRef.current.removeEventListener('loadedmetadata', handleLoadedMetadata);
+              }
+            };
+            videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
+          }
+        }
       }
     };
 
     initPlayer();
 
     return () => {
-      if (player) {
-        player.destroy();
+      if (activePlayer) {
+        activePlayer.destroy().catch((err) => console.warn('Error destroying Shaka instance:', err));
+      }
+      if (videoRef.current) {
+        // Stop any active Native playbacks and reload to clear buffers
+        videoRef.current.removeAttribute('src');
+        try {
+          videoRef.current.load();
+        } catch (e) {}
       }
     };
   }, [src]);
@@ -91,6 +125,7 @@ const ShakaPlayer: React.FC<ShakaPlayerProps> = ({ src, className, onClose, vide
         autoPlay
         playsInline
         crossOrigin="anonymous"
+        controls
       >
         {subtitles && subtitles.map((sub, index) => (
           <track

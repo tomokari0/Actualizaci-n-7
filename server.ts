@@ -113,6 +113,200 @@ async function startServer() {
     }
   });
 
+  // Helper for uploading WebVTT to ImageKit or fallback to base64 Data URI
+  const uploadToImageKit = async (vttContent: string, fileName: string): Promise<string> => {
+    try {
+      if (!process.env.IMAGEKIT_PRIVATE_KEY) {
+        throw new Error("ImageKit private key not configured");
+      }
+      const response = await imagekit.upload({
+        file: Buffer.from(vttContent).toString("base64"),
+        fileName: fileName,
+        folder: "/subtitles/"
+      });
+      console.log(`Uploaded ${fileName} to ImageKit successfully:`, response.url);
+      return response.url;
+    } catch (error) {
+      console.warn(`Error uploading ${fileName} to ImageKit, returning data URI fallback:`, error);
+      const base64 = Buffer.from(vttContent).toString("base64");
+      return `data:text/vtt;base64,${base64}`;
+    }
+  };
+
+  // API Route for AI Subtitle Generation & Translation
+  app.post("/api/subtitles/generate", async (req, res) => {
+    try {
+      const { videoUrl, title, description, languages = ["es", "en", "ja"] } = req.body;
+      console.log("Processing subtitles generation request:", { videoUrl, title, description, languages });
+
+      const key = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      if (!key) {
+        throw new Error("GEMINI_API_KEY or API_KEY environment variable is required");
+      }
+      
+      const ai = new GoogleGenAI({
+        apiKey: key,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
+
+      let originalVtt = "";
+      let base64Audio = "";
+      let mimeType = "audio/mp3";
+
+      // Try to download audio if direct media file
+      const isDirectMedia = videoUrl && (
+        videoUrl.endsWith(".mp3") || 
+        videoUrl.endsWith(".mp4") || 
+        videoUrl.endsWith(".wav") || 
+        videoUrl.endsWith(".webm") || 
+        videoUrl.includes("uploadcare") || 
+        videoUrl.includes("imagekit")
+      );
+
+      if (isDirectMedia) {
+        try {
+          console.log("Downloading audio file directly for transcription:", videoUrl);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
+          
+          const fileRes = await fetch(videoUrl, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (fileRes.ok) {
+            const buffer = await fileRes.arrayBuffer();
+            if (buffer.byteLength < 15 * 1024 * 1024) {
+              base64Audio = Buffer.from(buffer).toString("base64");
+              if (videoUrl.endsWith(".mp4")) mimeType = "video/mp4";
+              else if (videoUrl.endsWith(".wav")) mimeType = "audio/wav";
+              else if (videoUrl.endsWith(".webm")) mimeType = "audio/webm";
+              console.log("Downloaded audio data successfully. Size:", buffer.byteLength);
+            } else {
+              console.warn("File is too large (>15MB). Skipping direct audio transcribe.");
+            }
+          }
+        } catch (fetchErr: any) {
+          console.warn("Skipping direct audio download/transcribe due to:", fetchErr.message);
+        }
+      }
+
+      // Step 1: Transcribe with Gemini (if audio exists)
+      if (base64Audio) {
+        console.log("Transcribing audio content using Gemini...");
+        try {
+          const response = await ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: [
+              {
+                inlineData: {
+                  data: base64Audio,
+                  mimeType: mimeType
+                }
+              },
+              "Transcribe this audio file into Spanish WebVTT subtitle format. Output strictly the raw WebVTT content starting with 'WEBVTT'. Do not use markdown wraps (like ```vtt or ```). Ensure precise timestamps (e.g., 00:00:01.000 --> 00:00:04.000)."
+            ],
+            config: {
+              systemInstruction: "You are a professional audio transcriber. Your output must strictly be standard WebVTT format starting with WEBVTT. Do not output explanations, markdown syntax, or other characters."
+            }
+          });
+          originalVtt = response.text || "";
+        } catch (transcribeErr: any) {
+          console.warn("Gemini audio transcription failed, falling back to semantic generation:", transcribeErr.message);
+        }
+      }
+
+      // Step 2: Semantic fallback generation if transcribe failed or no audio
+      if (!originalVtt || !originalVtt.trim().startsWith("WEBVTT")) {
+        console.log("Generating context-aware semantic WebVTT subtitles...");
+        const semanticPrompt = `Generate a realistic, synchronized Spanish WebVTT subtitle script for a video with:
+Title: "${title || 'SeikoYT Video'}"
+Description: "${description || 'Un video emocionante de la comunidad'}"
+
+RULES:
+1. Provide a beautiful WebVTT starting with 'WEBVTT'.
+2. Create about 5 to 10 dialogue blocks corresponding to a 2-minute video.
+3. Use precise timestamps (e.g. 00:00:01.000 --> 00:00:05.000).
+4. Dialogues should feel completely realistic and match the title and description (fan-dub, Gacha, or gaming style).
+5. Output strictly the raw WebVTT content, without markdown code blocks.`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: semanticPrompt,
+          config: {
+            systemInstruction: "You are an expert subtitle writer. You produce highly realistic, fully synchronized Spanish subtitle files in WebVTT format starting with WEBVTT."
+          }
+        });
+        originalVtt = response.text || "";
+      }
+
+      // Clean markdown symbols from original VTT
+      originalVtt = originalVtt.replace(/```vtt/gi, "").replace(/```/g, "").trim();
+
+      const tracks: Array<{ label: string; src: string }> = [];
+      const randomId = Math.random().toString(36).substring(7);
+
+      // Upload original Spanish track
+      const espUrl = await uploadToImageKit(originalVtt, `sub_${randomId}_es.vtt`);
+      tracks.push({ label: "Español (Original)", src: espUrl });
+
+      // Translate VTT to requested target languages
+      const langNames: Record<string, string> = {
+        en: "English",
+        ja: "Japanese",
+        english: "English",
+        japanese: "Japanese",
+        es: "Spanish",
+        fr: "French",
+        pt: "Portuguese"
+      };
+
+      for (const langCode of languages) {
+        const targetLang = langNames[langCode.toLowerCase()] || langCode;
+        if (targetLang === "Spanish" || langCode === "es") continue;
+
+        try {
+          console.log(`Translating WebVTT subtitles to: ${targetLang}...`);
+          const translatePrompt = `Translate the following WebVTT subtitle content into ${targetLang}.
+RULES:
+1. Translate ONLY the subtitle dialog lines.
+2. DO NOT change or modify any timestamps (like '00:00:01.000 --> 00:00:04.000'), sequence numbers, or 'WEBVTT' headers.
+3. Keep the timing, structure, spacing, and format exactly the same to preserve video synchronization.
+4. Return strictly the raw WebVTT content starting with 'WEBVTT'. Do not use markdown wraps (like \`\`\`vtt or \`\`\`).
+
+WebVTT content:
+${originalVtt}`;
+
+          const response = await ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: translatePrompt,
+            config: {
+              systemInstruction: "You are a professional subtitle translator. You translate only the text dialog lines of WebVTT subtitles, leaving timestamps, timing codes, and structure completely untouched."
+            }
+          });
+
+          let translatedVtt = response.text || "";
+          translatedVtt = translatedVtt.replace(/```vtt/gi, "").replace(/```/g, "").trim();
+
+          if (translatedVtt && translatedVtt.startsWith("WEBVTT")) {
+            const transUrl = await uploadToImageKit(translatedVtt, `sub_${randomId}_${langCode}.vtt`);
+            tracks.push({ label: `${targetLang} (Traducido)`, src: transUrl });
+          }
+        } catch (transErr: any) {
+          console.error(`Error translating subtitles to ${targetLang}:`, transErr.message);
+        }
+      }
+
+      console.log("Subtitles generated and translated successfully!", tracks);
+      res.json({ success: true, tracks });
+    } catch (error: any) {
+      console.error("Subtitle Route Error:", error.message);
+      res.status(500).json({ error: "Failed to generate subtitles", message: error.message });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
