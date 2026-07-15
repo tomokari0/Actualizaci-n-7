@@ -229,24 +229,23 @@ Restricciones de Comportamiento:
   return chatModel;
 }
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
+const app = express();
+const PORT = 3000;
 
-  // Initialize ImageKit
-  console.log("ImageKit Config Check:", {
-    publicKey: process.env.VITE_IMAGEKIT_PUBLIC_KEY ? "Present" : "Missing",
-    privateKey: process.env.IMAGEKIT_PRIVATE_KEY ? "Present" : "Missing",
-    urlEndpoint: process.env.VITE_IMAGEKIT_URL_ENDPOINT ? "Present" : "Missing"
-  });
+// Initialize ImageKit
+console.log("ImageKit Config Check:", {
+  publicKey: process.env.VITE_IMAGEKIT_PUBLIC_KEY ? "Present" : "Missing",
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY ? "Present" : "Missing",
+  urlEndpoint: process.env.VITE_IMAGEKIT_URL_ENDPOINT ? "Present" : "Missing"
+});
 
-  const imagekit = new ImageKit({
-    publicKey: process.env.VITE_IMAGEKIT_PUBLIC_KEY || "",
-    privateKey: process.env.IMAGEKIT_PRIVATE_KEY || "",
-    urlEndpoint: process.env.VITE_IMAGEKIT_URL_ENDPOINT || ""
-  });
+const imagekit = new ImageKit({
+  publicKey: process.env.VITE_IMAGEKIT_PUBLIC_KEY || "",
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY || "",
+  urlEndpoint: process.env.VITE_IMAGEKIT_URL_ENDPOINT || ""
+});
 
-  app.use(express.json());
+app.use(express.json());
 
   // API Route for ImageKit Authentication
   app.get("/api/imagekit/auth", (req, res) => {
@@ -705,24 +704,31 @@ RULES:
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+  // Vite middleware for development or SPA serving in production
+  if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
+    createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
+    }).then((vite) => {
+      app.use(vite.middlewares);
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+    }).catch((err) => {
+      console.error("Failed to initialize Vite development server:", err);
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
+
+    if (!process.env.VERCEL) {
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+    }
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
-
-startServer();
+export default app;
