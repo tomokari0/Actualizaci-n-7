@@ -553,8 +553,11 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <input 
                                     type="number"
                                     className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
-                                    value={formData.episodeNumber}
-                                    onChange={e => setFormData({...formData, episodeNumber: parseInt(e.target.value)})}
+                                    value={isNaN(formData.episodeNumber) ? '' : formData.episodeNumber}
+                                    onChange={e => {
+                                        const val = parseInt(e.target.value);
+                                        setFormData({...formData, episodeNumber: isNaN(val) ? 0 : val});
+                                    }}
                                     required
                                 />
                             </div>
@@ -564,8 +567,11 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <input 
                                     type="number"
                                     className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
-                                    value={formData.seasonNumber}
-                                    onChange={e => setFormData({...formData, seasonNumber: parseInt(e.target.value)})}
+                                    value={isNaN(formData.seasonNumber) ? '' : formData.seasonNumber}
+                                    onChange={e => {
+                                        const val = parseInt(e.target.value);
+                                        setFormData({...formData, seasonNumber: isNaN(val) ? 0 : val});
+                                    }}
                                     required
                                 />
                             </div>
@@ -575,8 +581,11 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 <input 
                                     type="number"
                                     className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm"
-                                    value={formData.releaseYear}
-                                    onChange={e => setFormData({...formData, releaseYear: parseInt(e.target.value)})}
+                                    value={isNaN(formData.releaseYear) ? '' : formData.releaseYear}
+                                    onChange={e => {
+                                        const val = parseInt(e.target.value);
+                                        setFormData({...formData, releaseYear: isNaN(val) ? 0 : val});
+                                    }}
                                     required
                                 />
                             </div>

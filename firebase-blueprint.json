@@ -82,6 +82,30 @@
       },
       "required": ["name", "role"]
     },
+    "Season": {
+      "title": "Series Season",
+      "description": "A season within a series.",
+      "type": "object",
+      "properties": {
+        "seasonNumber": { "type": "integer" },
+        "title": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["seasonNumber"]
+    },
+    "Postulacion": {
+      "title": "Community Content Proposal",
+      "description": "Content uploaded or suggested by the community pending approval.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["movie", "series"] },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "type", "status", "createdAt"]
+    },
     "Feedback": {
       "title": "User Feedback",
       "description": "Ratings and feedback provided by users.",
@@ -111,6 +135,10 @@
       "schema": "Episode",
       "description": "Series episodes"
     },
+    "/content/{contentId}/temporadas/{seasonId}": {
+      "schema": "Season",
+      "description": "Series seasons metadata"
+    },
     "/content/{contentId}/cast/{castId}": {
       "schema": "CastMember",
       "description": "Cast and crew members of the film or series"
@@ -118,6 +146,10 @@
     "/feedback/{feedbackId}": {
       "schema": "Feedback",
       "description": "User feedback submissions"
+    },
+    "/postulaciones/{postulacionId}": {
+      "schema": "Postulacion",
+      "description": "Community video suggestions and uploads"
     }
   }
 }

@@ -2087,19 +2087,19 @@ const VideoPlayer: React.FC<{
                         <input 
                             type="range"
                             min="0"
-                            max={duration || 100}
-                            value={currentTime}
+                            max={isNaN(duration) ? 100 : (duration || 100)}
+                            value={isNaN(currentTime) ? 0 : currentTime}
                             onChange={handleSeek}
                             className="absolute inset-0 w-full h-full opacity-0 z-20 cursor-pointer"
                         />
                         <div className="absolute inset-0 bg-white/20 rounded-full"></div>
                         <div 
                             className="absolute inset-y-0 left-0 bg-red-600 rounded-full shadow-[0_0_10px_#ef4444] transition-all duration-150"
-                            style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                            style={{ width: `${((isNaN(currentTime) ? 0 : currentTime) / (isNaN(duration) || duration === 0 ? 1 : duration)) * 100}%` }}
                         />
                         <div 
                             className="absolute top-1/2 -translate-y-1/2 w-4 h-4 md:w-5 md:h-5 bg-white rounded-full shadow-2xl scale-0 group-hover/progress:scale-100 transition-transform duration-200 z-10"
-                            style={{ left: `${(currentTime / (duration || 1)) * 100}%`, marginLeft: '-10px' }}
+                            style={{ left: `${((isNaN(currentTime) ? 0 : currentTime) / (isNaN(duration) || duration === 0 ? 1 : duration)) * 100}%`, marginLeft: '-10px' }}
                         />
                     </div>
 
@@ -2454,7 +2454,7 @@ const VideoPlayer: React.FC<{
                     <div className="space-y-4 animate-fade-in animate-duration-150">
                         {episodes.map((ep, idx) => {
                             const progress = watchProgress[`${item.id}_${ep.id}`];
-                            const percent = progress ? (progress.currentTime / progress.duration) * 100 : 0;
+                            const percent = progress && progress.duration > 0 ? (progress.currentTime / progress.duration) * 100 : 0;
 
                             return (
                                 <div 
@@ -2665,7 +2665,7 @@ const VideoPlayer: React.FC<{
                     <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
                         <div 
                             className="h-full bg-red-600 transition-all duration-150"
-                            style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                            style={{ width: `${((isNaN(currentTime) ? 0 : currentTime) / (isNaN(duration) || duration === 0 ? 1 : duration)) * 100}%` }}
                         />
                     </div>
                 </div>
@@ -3198,6 +3198,13 @@ const MainApp: React.FC = () => {
                 console.error("Speech recognition error:", event.error);
                 setVoiceSearchError(event.error);
                 setIsListening(false);
+                if (event.error === 'not-allowed') {
+                    alert("Acceso al micrófono denegado. 🎙️\n\nPor favor, permite el acceso al micrófono en la barra de direcciones de tu navegador.\n\nNota: Si estás viendo la aplicación dentro de la ventana de vista previa (iframe), es posible que necesites abrirla en una pestaña independiente haciendo clic en el icono 'Abrir en pestaña nueva' de la esquina superior derecha para poder autorizar el micrófono.");
+                } else if (event.error === 'no-speech') {
+                    // Ignorar silencios para no molestar con alertas
+                } else {
+                    alert("Error de reconocimiento: " + event.error);
+                }
             };
 
             recognition.onend = () => {
@@ -3898,7 +3905,7 @@ const MainApp: React.FC = () => {
                                     key={`${item.id}-${idx}`} 
                                     item={item} 
                                     onPlay={() => setSelectedVideo(item)} 
-                                    progress={progress ? (progress.currentTime / progress.duration) * 100 : undefined} 
+                                    progress={progress && progress.duration > 0 ? (progress.currentTime / progress.duration) * 100 : undefined} 
                                 />
                             );
                         })}

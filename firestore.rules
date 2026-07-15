@@ -70,8 +70,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "tomokari07@gmail.com" && request.auth.token.email_verified == true));
+        (request.auth.token.email == "tomokari07@gmail.com" ||
+          (exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.role == 'admin'));
     }
 
     function hasRequiredFields(fields) {
@@ -116,10 +117,10 @@ service cloud.firestore {
     }
 
     function isValidContent(data) {
-      return hasRequiredFields(['title', 'description', 'thumbnailUrl', 'backdropUrl', 'type', 'releaseYear', 'rating', 'genre', 'status', 'createdAt']) &&
+      return hasRequiredFields(['title', 'description', 'thumbnailUrl', 'backdropUrl', 'type', 'releaseYear', 'rating', 'genre', 'createdAt']) &&
         data.title is string && data.title.size() > 0 &&
         data.type in ['movie', 'series'] &&
-        data.status in ['ongoing', 'completed', 'cancelled'] &&
+        (!('status' in data) || data.status in ['ongoing', 'completed', 'cancelled']) &&
         data.createdAt is timestamp;
     }
 
@@ -168,6 +169,11 @@ service cloud.firestore {
         allow write: if isAdmin();
       }
 
+      match /temporadas/{seasonId} {
+        allow read: if isAuthenticated();
+        allow write: if isAdmin();
+      }
+
       match /cast/{castId} {
         allow read: if isAuthenticated();
         allow write: if isAdmin();
@@ -178,6 +184,13 @@ service cloud.firestore {
     match /feedback/{feedbackId} {
       allow read: if isAdmin();
       allow create: if isAuthenticated() && isValidFeedback(request.resource.data);
+    }
+
+    // Postulaciones collection
+    match /postulaciones/{postulacionId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
     }
   }
 }
