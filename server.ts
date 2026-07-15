@@ -8,7 +8,6 @@ import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import fs from "fs";
 import os from "os";
-import ffmpeg from "fluent-ffmpeg";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -362,8 +361,8 @@ app.use(express.json());
         return originalVttText;
       }
 
-      // 10 cues per chunk to be extremely safe against TPM and payload constraints
-      const chunkSize = 10;
+      // 100 cues per chunk to avoid timeout on serverless environments like Vercel
+      const chunkSize = 100;
       const cueChunks: string[][] = [];
       for (let i = 0; i < cues.length; i += chunkSize) {
         cueChunks.push(cues.slice(i, i + chunkSize));
@@ -503,24 +502,40 @@ app.use(express.json());
             await fs.promises.copyFile(tempVideoPath, tempAudioPath);
           } else {
             console.log("Extracting audio as 16kHz mono MP3 using ffmpeg...");
-            await new Promise<void>((resolve, reject) => {
-              ffmpeg(tempVideoPath)
-                .noVideo()
-                .audioChannels(1)
-                .audioFrequency(16000)
-                .toFormat("mp3")
-                .on("start", (cmd) => {
-                  console.log("Spawned ffmpeg command:", cmd);
-                })
-                .on("end", () => {
-                  console.log("Audio extraction completed successfully.");
-                  resolve();
-                })
-                .on("error", (err) => {
-                  console.error("FFmpeg error:", err);
-                  reject(err);
-                })
-                .save(tempAudioPath);
+            await new Promise<void>(async (resolve, reject) => {
+              try {
+                // Dynamic import of fluent-ffmpeg for serverless compatibility
+                const ffmpegModule = await import("fluent-ffmpeg");
+                let ffmpegConstructor = ffmpegModule.default || ffmpegModule;
+                if (typeof ffmpegConstructor !== "function" && (ffmpegConstructor as any).default) {
+                  ffmpegConstructor = (ffmpegConstructor as any).default;
+                }
+
+                if (typeof ffmpegConstructor !== "function") {
+                  throw new Error("fluent-ffmpeg default export is not a function");
+                }
+
+                ffmpegConstructor(tempVideoPath)
+                  .noVideo()
+                  .audioChannels(1)
+                  .audioFrequency(16000)
+                  .toFormat("mp3")
+                  .on("start", (cmd) => {
+                    console.log("Spawned ffmpeg command:", cmd);
+                  })
+                  .on("end", () => {
+                    console.log("Audio extraction completed successfully.");
+                    resolve();
+                  })
+                  .on("error", (err) => {
+                    console.error("FFmpeg error:", err);
+                    reject(err);
+                  })
+                  .save(tempAudioPath);
+              } catch (importErr: any) {
+                console.error("Could not load fluent-ffmpeg or ffmpeg execution failed:", importErr.message);
+                reject(new Error(`FFmpeg not available or failed to load: ${importErr.message}`));
+              }
             });
           }
 
