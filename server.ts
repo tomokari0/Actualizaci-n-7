@@ -8,6 +8,8 @@ import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import fs from "fs";
 import os from "os";
+import { storage } from "./firebaseConfig";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -298,21 +300,20 @@ app.use(express.json());
     }
   });
 
-  // Helper for uploading WebVTT to ImageKit or fallback to base64 Data URI
-  const uploadToImageKit = async (vttContent: string, fileName: string): Promise<string> => {
+  // Helper for uploading WebVTT to Firebase Storage or fallback to base64 Data URI
+  const uploadToFirebaseStorage = async (vttContent: string, fileName: string): Promise<string> => {
     try {
-      if (!process.env.IMAGEKIT_PRIVATE_KEY) {
-        throw new Error("ImageKit private key not configured");
-      }
-      const response = await imagekit.upload({
-        file: Buffer.from(vttContent).toString("base64"),
-        fileName: fileName,
-        folder: "/subtitles/"
-      });
-      console.log(`Uploaded ${fileName} to ImageKit successfully:`, response.url);
-      return response.url;
+      const storageRef = ref(storage, `subtitles/${fileName}`);
+      const buffer = Buffer.from(vttContent, "utf-8");
+      const metadata = {
+        contentType: "text/vtt",
+      };
+      const uploadResult = await uploadBytes(storageRef, buffer, metadata);
+      const downloadUrl = await getDownloadURL(uploadResult.ref);
+      console.log(`Uploaded ${fileName} to Firebase Storage successfully:`, downloadUrl);
+      return downloadUrl;
     } catch (error) {
-      console.warn(`Error uploading ${fileName} to ImageKit, returning data URI fallback:`, error);
+      console.warn(`Error uploading ${fileName} to Firebase Storage, returning data URI fallback:`, error);
       const base64 = Buffer.from(vttContent).toString("base64");
       return `data:text/vtt;base64,${base64}`;
     }
@@ -668,7 +669,7 @@ RULES:
       const randomId = Math.random().toString(36).substring(7);
 
       // Upload original Spanish track
-      const espUrl = await uploadToImageKit(originalVtt, `sub_${randomId}_es.vtt`);
+      const espUrl = await uploadToFirebaseStorage(originalVtt, `sub_${randomId}_es.vtt`);
       tracks.push({ label: "Español (Original)", src: espUrl });
 
       // Translate VTT to requested target languages using Groq Llama 3
@@ -692,7 +693,7 @@ RULES:
             const translatedVtt = await translateWebVttInChunks(originalVtt, targetLang, groqKey);
 
             if (translatedVtt && translatedVtt.trim().startsWith("WEBVTT")) {
-              const transUrl = await uploadToImageKit(translatedVtt, `sub_${randomId}_${langCode}.vtt`);
+              const transUrl = await uploadToFirebaseStorage(translatedVtt, `sub_${randomId}_${langCode}.vtt`);
               tracks.push({ label: `${targetLang} (Traducido)`, src: transUrl });
             } else {
               throw new Error(`Failed to translate VTT to ${targetLang} using chunked Groq.`);
@@ -700,13 +701,13 @@ RULES:
           } catch (transErr: any) {
             console.warn(`Groq translation to ${targetLang} failed, falling back to local translation:`, transErr.message);
             const fallbackVtt = getLocalFallbackSubtitles(title, description, langCode);
-            const transUrl = await uploadToImageKit(fallbackVtt, `sub_${randomId}_${langCode}.vtt`);
+            const transUrl = await uploadToFirebaseStorage(fallbackVtt, `sub_${randomId}_${langCode}.vtt`);
             tracks.push({ label: `${targetLang} (Traducido)`, src: transUrl });
           }
         } else {
           console.log(`No GROQ_API_KEY. Using local translation fallback for ${targetLang}...`);
           const fallbackVtt = getLocalFallbackSubtitles(title, description, langCode);
-          const transUrl = await uploadToImageKit(fallbackVtt, `sub_${randomId}_${langCode}.vtt`);
+          const transUrl = await uploadToFirebaseStorage(fallbackVtt, `sub_${randomId}_${langCode}.vtt`);
           tracks.push({ label: `${targetLang} (Traducido)`, src: transUrl });
         }
       }
