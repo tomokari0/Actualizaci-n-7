@@ -192,5 +192,11 @@ service cloud.firestore {
       allow create: if isAuthenticated();
       allow update, delete: if isAdmin();
     }
+
+    // Config collection (Teapot date redirect, etc.)
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }

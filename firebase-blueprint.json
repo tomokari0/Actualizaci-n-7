@@ -116,6 +116,14 @@
         "timestamp": { "type": "string", "format": "date-time" },
         "date": { "type": "string" }
       }
+    },
+    "Config": {
+      "title": "Application Configuration",
+      "description": "Global application configuration documents like Teapot settings.",
+      "type": "object",
+      "properties": {
+        "redirectDate": { "type": "string", "description": "YYYY-MM-DD date for teapot redirection" }
+      }
     }
   },
   "firestore": {
@@ -150,6 +158,10 @@
     "/postulaciones/{postulacionId}": {
       "schema": "Postulacion",
       "description": "Community video suggestions and uploads"
+    },
+    "/config/{configId}": {
+      "schema": "Config",
+      "description": "Global config settings"
     }
   }
 }

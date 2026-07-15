@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { db } from './firebaseConfig';
-import { collection, addDoc, serverTimestamp as firestoreTimestamp, getDocs, query, where, orderBy, deleteDoc, doc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp as firestoreTimestamp, getDocs, query, where, orderBy, deleteDoc, doc, getDoc, setDoc } from "firebase/firestore";
 import { Content, Season } from './types';
 import { LANGUAGES } from './constants';
 import Uploader from './Uploader';
@@ -14,7 +14,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [type, setType] = useState<'movie' | 'series' | 'season' | 'episode' | 'cast'>('movie');
+    const [type, setType] = useState<'movie' | 'series' | 'season' | 'episode' | 'cast' | 'teapot'>('movie');
     const [seriesList, setSeriesList] = useState<Content[]>([]);
     const [seasonsList, setSeasonsList] = useState<Season[]>([]);
     const [selectedSeriesId, setSelectedSeriesId] = useState('');
@@ -38,6 +38,8 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         character: '',
         avatar: ''
     });
+
+    const [teapotDate, setTeapotDate] = useState('2026-07-25');
 
     const [formData, setFormData] = useState({
         title: '',
@@ -106,6 +108,41 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             setCastList([]);
         }
     }, [type, selectedContentId]);
+
+    useEffect(() => {
+        if (type === 'teapot') {
+            const fetchTeapotDate = async () => {
+                setLoading(true);
+                try {
+                    const docRef = doc(db, "config", "teapot");
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        setTeapotDate(docSnap.data().redirectDate || '2026-07-25');
+                    }
+                } catch (err) {
+                    console.error("Error fetching teapot date:", err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            fetchTeapotDate();
+        }
+    }, [type]);
+
+    const handleSaveTeapot = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const docRef = doc(db, "config", "teapot");
+            await setDoc(docRef, { redirectDate: teapotDate });
+            alert("¡Fecha de redirección Teapot guardada con éxito! ☕");
+        } catch (err: any) {
+            console.error("Error saving teapot date:", err);
+            setError(err.message || "Error al guardar la fecha.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleAddCastMember = async () => {
         if (!selectedContentId) return;
@@ -351,7 +388,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 </div>
 
                 <div className="flex gap-2 mb-6 md:mb-8 flex-wrap">
-                    {['movie', 'series', 'season', 'episode', 'cast'].map((t) => (
+                    {['movie', 'series', 'season', 'episode', 'cast', 'teapot'].map((t) => (
                         <button 
                             key={t}
                             type="button"
@@ -361,12 +398,45 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             }}
                             className={`flex-1 min-w-[70px] py-2 md:py-3 rounded-lg md:rounded-xl font-bold transition-all text-[8px] md:text-[10px] tracking-widest uppercase ${type === t ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
                         >
-                            {t === 'movie' ? 'Película' : t === 'series' ? 'Serie' : t === 'season' ? 'Temporada' : t === 'episode' ? 'Episodio' : 'Reparto'}
+                            {t === 'movie' ? 'Película' : t === 'series' ? 'Serie' : t === 'season' ? 'Temporada' : t === 'episode' ? 'Episodio' : t === 'cast' ? 'Reparto' : 'Día Teapot ☕'}
                         </button>
                     ))}
                 </div>
 
-                {type === 'cast' ? (
+                {type === 'teapot' ? (
+                    <div className="space-y-6 animate-fade-in text-left">
+                        <div className="flex flex-col gap-2 font-sans">
+                            <label className="text-[10px] text-red-500 uppercase font-black tracking-widest">Fecha de Redirección Teapot</label>
+                            <p className="text-[11px] text-gray-400 leading-relaxed">
+                                En la fecha configurada abajo, cualquier usuario que visite la web será redirigido automáticamente a <strong className="text-red-500">google.com/teapot</strong>. Antes y después de ese día, el sitio funcionará de forma totalmente normal.
+                            </p>
+                            <input 
+                                type="date"
+                                className="bg-white/5 border border-white/10 p-3 md:p-4 rounded-lg md:rounded-xl text-white focus:border-red-600 outline-none transition-all text-sm mt-2"
+                                value={teapotDate}
+                                onChange={e => setTeapotDate(e.target.value)}
+                                required
+                            />
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={handleSaveTeapot}
+                            disabled={loading}
+                            className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-4 rounded-xl text-xs transition-all tracking-[0.2em] uppercase shadow-lg shadow-red-600/10 mt-4"
+                        >
+                            {loading ? "Guardando..." : "Guardar Configuración Teapot ☕"}
+                        </button>
+
+                        {error && (
+                            <div className="p-4 bg-red-600/20 border border-red-600/50 rounded-xl">
+                                <p className="text-xs text-red-500 font-bold flex items-center gap-2">
+                                    ⚠️ {error}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                ) : type === 'cast' ? (
                     <div className="space-y-6 animate-fade-in text-left">
                         <div className="flex flex-col gap-2">
                             <label className="text-[10px] text-red-500 uppercase font-black tracking-widest">Seleccionar Película o Serie</label>

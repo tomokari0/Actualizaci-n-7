@@ -2831,6 +2831,47 @@ const MainApp: React.FC = () => {
     const { downloadedUrls, downloading, downloadVideo, removeDownload } = useOfflineDownloads();
 
     const [currentPage, setCurrentPage] = useState<Page>('home');
+    const [teapotDate, setTeapotDate] = useState<string | null>(null);
+
+    // Subscribe to Teapot config in Firestore
+    useEffect(() => {
+        const docRef = doc(db, "config", "teapot");
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                setTeapotDate(docSnap.data().redirectDate || "2026-07-25");
+            } else {
+                setTeapotDate("2026-07-25"); // Default date if document doesn't exist
+            }
+        }, (error) => {
+            console.error("Error listening to teapot config:", error);
+            setTeapotDate("2026-07-25");
+        });
+        return () => unsubscribe();
+    }, []);
+
+    // Perform redirect on target date
+    useEffect(() => {
+        if (!teapotDate) return;
+
+        // Get current date string in local time (YYYY-MM-DD)
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        const currentDateStr = `${year}-${month}-${day}`;
+
+        // Check if there is a query parameter to bypass (for testing/developing)
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('bypassTeapot') === 'true' || urlParams.get('bypass') === 'true') {
+            console.log("Teapot redirect bypassed via URL parameter.");
+            return;
+        }
+
+        if (currentDateStr === teapotDate) {
+            console.log(`Redirecting to teapot on date: ${currentDateStr}`);
+            window.location.href = "https://www.google.com/teapot";
+        }
+    }, [teapotDate]);
     
     // RAM Cleanup on page change
     useMemoryCleanup(currentPage);
