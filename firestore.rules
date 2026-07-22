@@ -161,21 +161,21 @@ service cloud.firestore {
 
     // Content collection
     match /content/{contentId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin() && isValidContent(request.resource.data);
 
       match /episodes/{episodeId} {
-        allow read: if isAuthenticated();
+        allow read: if true;
         allow write: if isAdmin();
       }
 
       match /temporadas/{seasonId} {
-        allow read: if isAuthenticated();
+        allow read: if true;
         allow write: if isAdmin();
       }
 
       match /cast/{castId} {
-        allow read: if isAuthenticated();
+        allow read: if true;
         allow write: if isAdmin();
       }
     }

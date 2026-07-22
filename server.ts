@@ -10,6 +10,13 @@ import fs from "fs";
 import os from "os";
 import { storage } from "./firebaseConfig";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import multer from "multer";
+import { uploadToR2, getR2Config, getPresignedR2Url } from "./services/r2Storage";
+
+const multerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 } // 500 MB max
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -246,7 +253,117 @@ const imagekit = new ImageKit({
   urlEndpoint: process.env.VITE_IMAGEKIT_URL_ENDPOINT || ""
 });
 
-app.use(express.json());
+app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ limit: "100mb", extended: true }));
+
+  // Cloudflare R2 Status & Health Endpoint
+  // Endpoint for obtaining Cloudflare R2 Presigned Upload URL (Avoids 413 Payload Too Large on server)
+  app.post("/api/upload/presign", async (req, res) => {
+    try {
+      const { fileName, mimeType, folder } = req.body || {};
+      if (!fileName) {
+        return res.status(400).json({ success: false, error: "Se requiere el parámetro 'fileName'." });
+      }
+
+      const presignData = await getPresignedR2Url(
+        fileName,
+        mimeType || "application/octet-stream",
+        folder || "uploads"
+      );
+
+      return res.json({
+        success: true,
+        presignedUrl: presignData.presignedUrl,
+        url: presignData.fileUrl,
+        key: presignData.key,
+        bucket: presignData.bucket,
+      });
+    } catch (error: any) {
+      console.error("Error al generar presigned URL R2:", error.message);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Error al generar URL pre-firmada de Cloudflare R2."
+      });
+    }
+  });
+
+  app.get("/api/upload", (req, res) => {
+    const config = getR2Config();
+    const isConfigured = Boolean(config.accountId && config.accessKeyId && config.secretAccessKey);
+    res.json({
+      status: "ok",
+      provider: "Cloudflare R2",
+      isConfigured,
+      bucket: config.bucketName || "No configurado",
+      publicUrl: config.publicUrl || "No configurado (usará URL por defecto de R2)",
+      message: isConfigured 
+        ? "Cloudflare R2 está conectado y listo para subir archivos." 
+        : "Configura R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET_NAME en el archivo .env"
+    });
+  });
+
+  // Cloudflare R2 Upload Endpoint (Supports both multipart form data and base64 JSON payload)
+  app.post("/api/upload", (req, res, next) => {
+    multerUpload.single("file")(req, res, (err) => {
+      if (err) {
+        console.error("Multer file upload error:", err);
+        return res.status(400).json({
+          success: false,
+          error: `Error al procesar la subida del archivo: ${err.message || err}`
+        });
+      }
+      next();
+    });
+  }, async (req, res) => {
+    try {
+      let fileBuffer: Buffer | null = null;
+      let fileName = "";
+      let mimeType = "application/octet-stream";
+      let folder = "media";
+
+      if (req.file) {
+        // Handle multipart form upload
+        fileBuffer = req.file.buffer;
+        fileName = req.file.originalname;
+        mimeType = req.file.mimetype;
+        folder = req.body.folder || "media";
+      } else if (req.body && req.body.fileData) {
+        // Handle JSON base64 upload
+        fileName = req.body.fileName || `file-${Date.now()}`;
+        mimeType = req.body.mimeType || "application/octet-stream";
+        folder = req.body.folder || "media";
+        const base64Data = req.body.fileData.includes(";base64,") 
+          ? req.body.fileData.split(";base64,")[1] 
+          : req.body.fileData;
+        fileBuffer = Buffer.from(base64Data, "base64");
+      }
+
+      if (!fileBuffer || !fileName) {
+        return res.status(400).json({
+          success: false,
+          error: "No se proporcionó ningún archivo. Envía un archivo en el campo 'file' o 'fileData' (base64)."
+        });
+      }
+
+      console.log(`Subiendo archivo '${fileName}' (${mimeType}) a Cloudflare R2...`);
+      const uploadResult = await uploadToR2(fileBuffer, fileName, mimeType, folder);
+      
+      console.log(`¡Archivo subido exitosamente a R2! URL: ${uploadResult.url}`);
+      return res.json({
+        success: true,
+        message: "Archivo subido exitosamente a Cloudflare R2",
+        url: uploadResult.url,
+        key: uploadResult.key,
+        bucket: uploadResult.bucket
+      });
+    } catch (error: any) {
+      console.error("Error al subir archivo a Cloudflare R2:", error.message);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Error al subir el archivo a Cloudflare R2."
+      });
+    }
+  });
 
   // API Route for ImageKit Authentication
   app.get("/api/imagekit/auth", (req, res) => {

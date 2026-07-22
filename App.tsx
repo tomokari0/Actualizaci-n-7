@@ -3274,6 +3274,8 @@ const MainApp: React.FC = () => {
         const unsub = onSnapshot(q, (snap) => {
             const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Content));
             setContentList([...data, ...MOCK_CONTENT.filter(m => !data.find(d => d.id === m.id))]);
+        }, (error) => {
+            console.warn("Error listening to content from Firestore:", error);
         });
         return () => unsub();
     }, []);

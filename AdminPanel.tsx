@@ -14,7 +14,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [type, setType] = useState<'movie' | 'series' | 'season' | 'episode' | 'cast' | 'teapot'>('movie');
+    const [type, setType] = useState<'movie' | 'series' | 'season' | 'episode' | 'cast' | 'teapot' | 'r2'>('movie');
     const [seriesList, setSeriesList] = useState<Content[]>([]);
     const [seasonsList, setSeasonsList] = useState<Season[]>([]);
     const [selectedSeriesId, setSelectedSeriesId] = useState('');
@@ -388,7 +388,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                 </div>
 
                 <div className="flex gap-2 mb-6 md:mb-8 flex-wrap">
-                    {['movie', 'series', 'season', 'episode', 'cast', 'teapot'].map((t) => (
+                    {['movie', 'series', 'season', 'episode', 'cast', 'teapot', 'r2'].map((t) => (
                         <button 
                             key={t}
                             type="button"
@@ -398,7 +398,7 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                             }}
                             className={`flex-1 min-w-[70px] py-2 md:py-3 rounded-lg md:rounded-xl font-bold transition-all text-[8px] md:text-[10px] tracking-widest uppercase ${type === t ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'}`}
                         >
-                            {t === 'movie' ? 'Película' : t === 'series' ? 'Serie' : t === 'season' ? 'Temporada' : t === 'episode' ? 'Episodio' : t === 'cast' ? 'Reparto' : 'Día Teapot ☕'}
+                            {t === 'movie' ? 'Película' : t === 'series' ? 'Serie' : t === 'season' ? 'Temporada' : t === 'episode' ? 'Episodio' : t === 'cast' ? 'Reparto' : t === 'teapot' ? 'Día Teapot ☕' : 'Cloudflare R2 ☁️'}
                         </button>
                     ))}
                 </div>
@@ -435,6 +435,79 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                 </p>
                             </div>
                         )}
+                    </div>
+                ) : type === 'r2' ? (
+                    <div className="space-y-6 animate-fade-in text-left">
+                        <div className="p-4 bg-orange-950/30 border border-orange-500/30 rounded-xl space-y-3">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
+                                <h3 className="text-sm font-bold text-orange-400 flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+                                    Panel Cloudflare R2
+                                </h3>
+                                <button
+                                    type="button"
+                                    onClick={async () => {
+                                        try {
+                                            const res = await fetch('/api/upload');
+                                            const data = await res.json();
+                                            alert(`Cloudflare R2:\n• Configurado: ${data.isConfigured ? 'SÍ ✅' : 'NO ❌'}\n• Bucket: ${data.bucket}\n• URL Pública: ${data.publicUrl}\n• Mensaje: ${data.message}`);
+                                        } catch (err: any) {
+                                            alert('Error al verificar R2: ' + err.message);
+                                        }
+                                    }}
+                                    className="text-[10px] bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 px-3 py-1.5 rounded-lg border border-orange-500/30 transition-all font-bold"
+                                >
+                                    Verificar Conexión R2 🔄
+                                </button>
+                            </div>
+                            <p className="text-xs text-gray-300 leading-relaxed">
+                                Sube directamente tus archivos de audio <strong>.mp3</strong> (multi-audio), videos (<strong>.mp4</strong>, <strong>.mkv</strong>) o imágenes a Cloudflare R2. Las credenciales se configuran mediante las variables de entorno <code>R2_ACCOUNT_ID</code>, <code>R2_ACCESS_KEY_ID</code>, <code>R2_SECRET_ACCESS_KEY</code> y <code>R2_BUCKET_NAME</code>.
+                            </p>
+                        </div>
+
+                        {/* CORS Config Help Box */}
+                        <div className="p-4 bg-neutral-900 border border-amber-500/30 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                                    ⚙️ Configuración CORS requerida en Cloudflare R2 (para subir desde el navegador):
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const corsJson = JSON.stringify([
+                                            {
+                                                "AllowedOrigins": ["*"],
+                                                "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+                                                "AllowedHeaders": ["*"],
+                                                "ExposeHeaders": []
+                                            }
+                                        ], null, 2);
+                                        navigator.clipboard.writeText(corsJson);
+                                        alert("¡CORS JSON copiado al portapapeles!\n\nPégalo en Cloudflare R2 > Tu Bucket > Settings > CORS Policy.");
+                                    }}
+                                    className="text-[10px] bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 px-2.5 py-1 rounded border border-amber-500/40 transition-all font-bold"
+                                >
+                                    📋 Copiar Regla CORS
+                                </button>
+                            </div>
+                            <p className="text-[11px] text-gray-400">
+                                Para permitir la subida directa de archivos grandes (&gt;25MB) desde el navegador a R2 sin bloqueos, ve a tu panel de Cloudflare R2 &rarr; <strong>Tu Bucket</strong> &rarr; <strong>Settings</strong> &rarr; <strong>CORS Policy</strong> y pega la regla.
+                            </p>
+                        </div>
+
+                        <div className="space-y-3 p-5 bg-white/5 border border-white/10 rounded-xl">
+                            <label className="text-[10px] text-orange-400 uppercase font-black tracking-widest block">
+                                Subir Archivo a Cloudflare R2 (.mp3, .mp4, etc.)
+                            </label>
+                            <Uploader 
+                                accept="audio/*,video/*,image/*" 
+                                folder="uploads" 
+                                buttonText="Seleccionar y Subir Archivo a R2" 
+                                onUploadSuccess={(url) => {
+                                    alert('¡Archivo subido exitosamente a Cloudflare R2!\n\nURL:\n' + url);
+                                }}
+                            />
+                        </div>
                     </div>
                 ) : type === 'cast' ? (
                     <div className="space-y-6 animate-fade-in text-left">
@@ -806,13 +879,21 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                                             required={formData.serverType === 'embed'}
                                                         />
                                                     ) : (
-                                                        <input 
-                                                            className="flex-grow bg-[#1a1a1a] border border-white/10 p-4 rounded-xl text-white focus:border-red-600 focus:ring-1 focus:ring-red-600/50 outline-none transition-all text-xs placeholder:text-gray-600 shadow-inner"
-                                                            value={formData.videoUrl}
-                                                            onChange={e => setFormData({...formData, videoUrl: e.target.value})}
-                                                            placeholder={formData.serverType === 'uploadcare' ? "Ej: https://ucarecdn.com/..." : "Ej: https://streamtape.com/e/..."}
-                                                            required={type === 'episode'}
-                                                        />
+                                                        <div className="flex gap-2 items-center">
+                                                            <input 
+                                                                className="flex-grow bg-[#1a1a1a] border border-white/10 p-4 rounded-xl text-white focus:border-red-600 focus:ring-1 focus:ring-red-600/50 outline-none transition-all text-xs placeholder:text-gray-600 shadow-inner"
+                                                                value={formData.videoUrl}
+                                                                onChange={e => setFormData({...formData, videoUrl: e.target.value})}
+                                                                placeholder={formData.serverType === 'uploadcare' ? "Ej: https://ucarecdn.com/..." : "Ej: https://... (R2 / Servidor)"}
+                                                                required={type === 'episode'}
+                                                            />
+                                                            <Uploader 
+                                                                accept="video/*,audio/*" 
+                                                                folder="videos" 
+                                                                buttonText="Subir Video"
+                                                                onUploadSuccess={(url) => setFormData({...formData, videoUrl: url})} 
+                                                            />
+                                                        </div>
                                                     )}
                                                     
                                                     <button 
@@ -876,7 +957,17 @@ const AdminPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                                                                 newTracks[index].url = e.target.value;
                                                                 setFormData({...formData, audioTracks: newTracks});
                                                             }}
-                                                            placeholder="URL del video con este audio"
+                                                            placeholder="URL del audio (.mp3) o video"
+                                                        />
+                                                        <Uploader 
+                                                            accept="audio/*,video/*" 
+                                                            folder="audio" 
+                                                            buttonText="Subir .mp3"
+                                                            onUploadSuccess={(url) => {
+                                                                const newTracks = [...formData.audioTracks];
+                                                                newTracks[index].url = url;
+                                                                setFormData({...formData, audioTracks: newTracks});
+                                                            }} 
                                                         />
                                                         <button 
                                                             type="button"
