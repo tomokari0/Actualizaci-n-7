@@ -1,4 +1,4 @@
-const CACHE_NAME = 'seikoyt-cache-v2';
+const CACHE_NAME = 'seikoyt-cache-v4';
 const DOWNLOADS_CACHE_NAME = 'seikotv-downloads';
 const ASSETS_TO_CACHE = [
   '/',
@@ -22,6 +22,7 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME && cacheName !== DOWNLOADS_CACHE_NAME) {
+            console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -46,7 +47,7 @@ self.addEventListener('fetch', (event) => {
       })
     );
   } else if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
-    // Network-First strategy for HTML navigation to ensure users always receive the latest JS bundle hashes
+    // Network-First strategy for HTML navigation
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
@@ -59,10 +60,13 @@ self.addEventListener('fetch', (event) => {
         .catch(() => caches.match(event.request) || caches.match('/'))
     );
   } else {
-    // Stale-while-revalidate / Cache fallback for static assets
+    // Cache first, fallback to network for assets
     event.respondWith(
       caches.match(event.request).then((response) => {
-        return response || fetch(event.request);
+        if (response) {
+          return response;
+        }
+        return fetch(event.request);
       })
     );
   }

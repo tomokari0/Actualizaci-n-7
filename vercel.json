@@ -7,7 +7,15 @@
       "destination": "/api/index.ts"
     },
     {
-      "source": "/((?!api/|assets/|.*\\.(?:js|css|png|jpg|jpeg|gif|svg|ico|json|vtt|mp4|webm)).*)",
+      "source": "/upload/(.*)",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/upload",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/((?!api/|upload/|assets/|.*\\.(?:js|css|png|jpg|jpeg|gif|svg|ico|json|vtt|mp4|webm)).*)",
       "destination": "/index.html"
     }
   ]
