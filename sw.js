@@ -1,4 +1,4 @@
-const CACHE_NAME = 'seikoyt-cache-v4';
+const CACHE_NAME = 'seikoyt-cache-v5';
 const DOWNLOADS_CACHE_NAME = 'seikotv-downloads';
 const ASSETS_TO_CACHE = [
   '/',
@@ -47,7 +47,7 @@ self.addEventListener('fetch', (event) => {
       })
     );
   } else if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname === '/index.html') {
-    // Network-First strategy for HTML navigation
+    // Network-First strategy for HTML navigation to ensure latest bundle references are served
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
@@ -60,7 +60,7 @@ self.addEventListener('fetch', (event) => {
         .catch(() => caches.match(event.request) || caches.match('/'))
     );
   } else {
-    // Cache first, fallback to network for assets
+    // Cache first, fallback to network
     event.respondWith(
       caches.match(event.request).then((response) => {
         if (response) {
