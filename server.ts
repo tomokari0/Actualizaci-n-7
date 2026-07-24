@@ -1,7 +1,6 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import ImageKit from "imagekit";
 import { fileURLToPath } from "url";
@@ -255,6 +254,17 @@ const imagekit = new ImageKit({
 
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ limit: "100mb", extended: true }));
+
+// Enable CORS for all incoming requests
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
   // Cloudflare R2 Status & Health Endpoint
   // Endpoint for obtaining Cloudflare R2 Presigned Upload URL (Avoids 413 Payload Too Large on server)
@@ -837,31 +847,33 @@ RULES:
     }
   });
 
-  // Vite middleware for development or SPA serving in production
+  // Vite middleware for development or SPA serving in standalone production
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    }).then((vite) => {
-      app.use(vite.middlewares);
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`Server running on http://localhost:${PORT}`);
+    import("vite")
+      .then(({ createServer }) => {
+        createServer({
+          server: { middlewareMode: true },
+          appType: "spa",
+        }).then((vite) => {
+          app.use(vite.middlewares);
+          app.listen(PORT, "0.0.0.0", () => {
+            console.log(`Server running on http://localhost:${PORT}`);
+          });
+        });
+      })
+      .catch((err) => {
+        console.error("Failed to initialize Vite development server:", err);
       });
-    }).catch((err) => {
-      console.error("Failed to initialize Vite development server:", err);
-    });
-  } else {
+  } else if (!process.env.VERCEL) {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
 
-    if (!process.env.VERCEL) {
-      app.listen(PORT, "0.0.0.0", () => {
-        console.log(`Server running on http://localhost:${PORT}`);
-      });
-    }
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+    });
   }
 
 export default app;
