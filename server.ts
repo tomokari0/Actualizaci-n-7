@@ -17,8 +17,20 @@ const multerUpload = multer({
   limits: { fileSize: 500 * 1024 * 1024 } // 500 MB max
 });
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+let __filename = "";
+let __dirname = "";
+try {
+  if (typeof import.meta !== "undefined" && import.meta.url) {
+    __filename = fileURLToPath(import.meta.url);
+    __dirname = path.dirname(__filename);
+  } else {
+    __filename = process.cwd();
+    __dirname = process.cwd();
+  }
+} catch (e) {
+  __filename = process.cwd();
+  __dirname = process.cwd();
+}
 
 let aiClient: GoogleGenAI | null = null;
 let chatModel: any = null;
@@ -272,8 +284,14 @@ app.use((req, res, next) => {
 
   // Cloudflare R2 Status & Health Endpoint
   // Endpoint for obtaining Cloudflare R2 Presigned Upload URL (Avoids 413 Payload Too Large on server)
-  app.post("/api/upload/presign", async (req, res) => {
+  app.post(["/api/upload/presign", "/upload/presign"], async (req, res) => {
     try {
+      console.log("[R2 Presign] Request received:", {
+        fileName: req.body?.fileName,
+        mimeType: req.body?.mimeType,
+        folder: req.body?.folder,
+      });
+
       const { fileName, mimeType, folder } = req.body || {};
       if (!fileName) {
         return res.status(400).json({ success: false, error: "Se requiere el parámetro 'fileName'." });
@@ -285,6 +303,7 @@ app.use((req, res, next) => {
         folder || "uploads"
       );
 
+      console.log("[R2 Presign] Generated successfully for key:", presignData.key);
       return res.json({
         success: true,
         presignedUrl: presignData.presignedUrl,
@@ -293,17 +312,42 @@ app.use((req, res, next) => {
         bucket: presignData.bucket,
       });
     } catch (error: any) {
-      console.error("Error al generar presigned URL R2:", error.message);
-      return res.status(500).json({
+      const config = getR2Config();
+      console.error("[R2 Presign Error]:", {
+        message: error?.message,
+        stack: error?.stack,
+        envCheck: {
+          hasAccountId: Boolean(config.accountId),
+          hasAccessKey: Boolean(config.accessKeyId),
+          hasSecretKey: Boolean(config.secretAccessKey),
+          bucket: config.bucketName,
+        }
+      });
+      return res.status(400).json({
         success: false,
-        error: error.message || "Error al generar URL pre-firmada de Cloudflare R2."
+        error: error?.message || "Error al generar URL pre-firmada de Cloudflare R2.",
+        envStatus: {
+          configured: Boolean(config.accountId && config.accessKeyId && config.secretAccessKey),
+          missingVars: [
+            !config.accountId && "R2_ACCOUNT_ID",
+            !config.accessKeyId && "R2_ACCESS_KEY_ID",
+            !config.secretAccessKey && "R2_SECRET_ACCESS_KEY",
+          ].filter(Boolean)
+        }
       });
     }
   });
 
-  app.get("/api/upload", (req, res) => {
+  app.get(["/api/upload", "/upload"], (req, res) => {
     const config = getR2Config();
     const isConfigured = Boolean(config.accountId && config.accessKeyId && config.secretAccessKey);
+    console.log("[R2 Health Check] Config status:", {
+      isConfigured,
+      hasAccountId: Boolean(config.accountId),
+      hasAccessKey: Boolean(config.accessKeyId),
+      hasSecretKey: Boolean(config.secretAccessKey),
+      bucket: config.bucketName,
+    });
     res.json({
       status: "ok",
       provider: "Cloudflare R2",
@@ -312,15 +356,15 @@ app.use((req, res, next) => {
       publicUrl: config.publicUrl || "No configurado (usará URL por defecto de R2)",
       message: isConfigured 
         ? "Cloudflare R2 está conectado y listo para subir archivos." 
-        : "Configura R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET_NAME en el archivo .env"
+        : "Configura R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET_NAME en los Environment Variables de Vercel o en el archivo .env"
     });
   });
 
   // Cloudflare R2 Upload Endpoint (Supports both multipart form data and base64 JSON payload)
-  app.post("/api/upload", (req, res, next) => {
+  app.post(["/api/upload", "/upload"], (req, res, next) => {
     multerUpload.single("file")(req, res, (err) => {
       if (err) {
-        console.error("Multer file upload error:", err);
+        console.error("[R2 Upload Multer Error]:", err);
         return res.status(400).json({
           success: false,
           error: `Error al procesar la subida del archivo: ${err.message || err}`
@@ -359,10 +403,10 @@ app.use((req, res, next) => {
         });
       }
 
-      console.log(`Subiendo archivo '${fileName}' (${mimeType}) a Cloudflare R2...`);
+      console.log(`[R2 Direct Upload] Processing '${fileName}' (${mimeType}, ${fileBuffer.length} bytes)...`);
       const uploadResult = await uploadToR2(fileBuffer, fileName, mimeType, folder);
       
-      console.log(`¡Archivo subido exitosamente a R2! URL: ${uploadResult.url}`);
+      console.log(`[R2 Direct Upload] Success! URL: ${uploadResult.url}`);
       return res.json({
         success: true,
         message: "Archivo subido exitosamente a Cloudflare R2",
@@ -371,10 +415,19 @@ app.use((req, res, next) => {
         bucket: uploadResult.bucket
       });
     } catch (error: any) {
-      console.error("Error al subir archivo a Cloudflare R2:", error.message);
-      return res.status(500).json({
+      const config = getR2Config();
+      console.error("[R2 Direct Upload Error]:", {
+        message: error?.message,
+        stack: error?.stack,
+        envCheck: {
+          hasAccountId: Boolean(config.accountId),
+          hasAccessKey: Boolean(config.accessKeyId),
+          hasSecretKey: Boolean(config.secretAccessKey),
+        }
+      });
+      return res.status(400).json({
         success: false,
-        error: error.message || "Error al subir el archivo a Cloudflare R2."
+        error: error?.message || "Error al subir el archivo a Cloudflare R2."
       });
     }
   });

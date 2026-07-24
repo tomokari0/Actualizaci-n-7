@@ -11,11 +11,45 @@ export interface R2Config {
 }
 
 export function getR2Config(): R2Config {
-  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID || process.env.R2_ACCOUNT_ID || "";
-  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY || "";
-  const secretAccessKey = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY || process.env.R2_SECRET_KEY || "";
-  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || process.env.R2_BUCKET_NAME || process.env.R2_BUCKET || "seikoyt-media";
-  const publicUrl = (process.env.CLOUDFLARE_R2_PUBLIC_URL || process.env.R2_PUBLIC_URL || process.env.R2_CUSTOM_DOMAIN || "").trim();
+  const accountId = (
+    process.env.CLOUDFLARE_R2_ACCOUNT_ID ||
+    process.env.R2_ACCOUNT_ID ||
+    process.env.VITE_R2_ACCOUNT_ID ||
+    process.env.VITE_CLOUDFLARE_R2_ACCOUNT_ID ||
+    ""
+  ).trim();
+
+  const accessKeyId = (
+    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID ||
+    process.env.R2_ACCESS_KEY_ID ||
+    process.env.R2_ACCESS_KEY ||
+    process.env.VITE_R2_ACCESS_KEY_ID ||
+    ""
+  ).trim();
+
+  const secretAccessKey = (
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY ||
+    process.env.R2_SECRET_ACCESS_KEY ||
+    process.env.R2_SECRET_KEY ||
+    process.env.VITE_R2_SECRET_ACCESS_KEY ||
+    ""
+  ).trim();
+
+  const bucketName = (
+    process.env.CLOUDFLARE_R2_BUCKET_NAME ||
+    process.env.R2_BUCKET_NAME ||
+    process.env.R2_BUCKET ||
+    process.env.VITE_R2_BUCKET_NAME ||
+    ""
+  ).trim();
+
+  const publicUrl = (
+    process.env.CLOUDFLARE_R2_PUBLIC_URL ||
+    process.env.R2_PUBLIC_URL ||
+    process.env.R2_CUSTOM_DOMAIN ||
+    process.env.VITE_R2_PUBLIC_URL ||
+    ""
+  ).trim();
 
   return {
     accountId,
@@ -29,8 +63,17 @@ export function getR2Config(): R2Config {
 
 export function createR2Client() {
   const config = getR2Config();
-  if (!config.accountId || !config.accessKeyId || !config.secretAccessKey) {
-    return { client: null, config };
+  const missingVars: string[] = [];
+
+  if (!config.accountId) missingVars.push("R2_ACCOUNT_ID (or CLOUDFLARE_R2_ACCOUNT_ID)");
+  if (!config.accessKeyId) missingVars.push("R2_ACCESS_KEY_ID (or CLOUDFLARE_R2_ACCESS_KEY_ID)");
+  if (!config.secretAccessKey) missingVars.push("R2_SECRET_ACCESS_KEY (or CLOUDFLARE_R2_SECRET_ACCESS_KEY)");
+  if (!config.bucketName) missingVars.push("R2_BUCKET_NAME (or CLOUDFLARE_R2_BUCKET_NAME)");
+
+  if (missingVars.length > 0) {
+    throw new Error(
+      `Cloudflare R2 is missing required configuration variable(s): ${missingVars.join(", ")}. Please set these environment variables in Vercel or your .env file.`
+    );
   }
 
   const client = new S3Client({
@@ -51,12 +94,6 @@ export async function getPresignedR2Url(
   folder: string = "uploads"
 ): Promise<{ presignedUrl: string; fileUrl: string; key: string; bucket: string }> {
   const { client, config } = createR2Client();
-
-  if (!client) {
-    throw new Error(
-      "Cloudflare R2 no está configurado. Por favor define R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET_NAME en el archivo .env"
-    );
-  }
 
   const cleanName = originalFilename.replace(/[^a-zA-Z0-9.-]/g, "_");
   const timestamp = Date.now();
@@ -92,12 +129,6 @@ export async function uploadToR2(
   folder: string = "uploads"
 ): Promise<{ url: string; key: string; bucket: string }> {
   const { client, config } = createR2Client();
-
-  if (!client) {
-    throw new Error(
-      "Cloudflare R2 no está configurado. Por favor define R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET_NAME en el archivo .env"
-    );
-  }
 
   const cleanName = originalFilename.replace(/[^a-zA-Z0-9.-]/g, "_");
   const timestamp = Date.now();
