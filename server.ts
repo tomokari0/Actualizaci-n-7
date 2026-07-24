@@ -239,18 +239,22 @@ Restricciones de Comportamiento:
 const app = express();
 const PORT = 3000;
 
-// Initialize ImageKit
-console.log("ImageKit Config Check:", {
-  publicKey: process.env.VITE_IMAGEKIT_PUBLIC_KEY ? "Present" : "Missing",
-  privateKey: process.env.IMAGEKIT_PRIVATE_KEY ? "Present" : "Missing",
-  urlEndpoint: process.env.VITE_IMAGEKIT_URL_ENDPOINT ? "Present" : "Missing"
-});
+// Lazy ImageKit Initialization helper
+function getImageKitInstance() {
+  const publicKey = process.env.VITE_IMAGEKIT_PUBLIC_KEY || process.env.IMAGEKIT_PUBLIC_KEY || "";
+  const privateKey = process.env.IMAGEKIT_PRIVATE_KEY || "";
+  const urlEndpoint = process.env.VITE_IMAGEKIT_URL_ENDPOINT || process.env.IMAGEKIT_URL_ENDPOINT || "";
 
-const imagekit = new ImageKit({
-  publicKey: process.env.VITE_IMAGEKIT_PUBLIC_KEY || "",
-  privateKey: process.env.IMAGEKIT_PRIVATE_KEY || "",
-  urlEndpoint: process.env.VITE_IMAGEKIT_URL_ENDPOINT || ""
-});
+  if (!publicKey || !privateKey || !urlEndpoint) {
+    throw new Error("ImageKit configuration missing: Ensure IMAGEKIT_PRIVATE_KEY, VITE_IMAGEKIT_PUBLIC_KEY and VITE_IMAGEKIT_URL_ENDPOINT are set.");
+  }
+
+  return new ImageKit({
+    publicKey,
+    privateKey,
+    urlEndpoint
+  });
+}
 
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ limit: "100mb", extended: true }));
@@ -379,12 +383,8 @@ app.use((req, res, next) => {
   app.get("/api/imagekit/auth", (req, res) => {
     try {
       console.log("Generating ImageKit auth parameters...");
-      
-      if (!process.env.IMAGEKIT_PRIVATE_KEY) {
-        throw new Error("IMAGEKIT_PRIVATE_KEY is missing in environment variables");
-      }
-
-      const result = imagekit.getAuthenticationParameters();
+      const ik = getImageKitInstance();
+      const result = ik.getAuthenticationParameters();
       console.log("Auth parameters generated successfully");
       res.json(result);
     } catch (error: any) {
