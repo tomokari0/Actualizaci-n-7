@@ -1,12 +1,14 @@
 
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
 import { getDatabase } from "firebase/database";
 
 /**
- * ⚠️ CONFIGURACIÓN DE FIREBASE
+ * ⚠️ IMPORTANTE: REEMPLAZA ESTOS DATOS
+ * Ve a: Firebase Console > Configuración del Proyecto > General > Tus Apps
+ * Si no tienes una app creada, haz clic en el icono de </> (Web)
  */
 const firebaseConfig = {
   apiKey: "AIzaSyAUY3mbdZ3_MgxDDVE0qRwDOBqIuSOTdOU",
@@ -18,11 +20,11 @@ const firebaseConfig = {
   databaseURL: "https://seikoyt-streaming-default-rtdb.firebaseio.com"
 };
 
+// Check if the user has replaced the placeholders
 export const isConfigured = firebaseConfig.projectId !== "YOUR_PROJECT_ID";
 
-// Initialize Firebase safely for serverless cold-starts
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
-
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);

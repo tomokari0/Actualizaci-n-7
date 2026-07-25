@@ -1,6 +1,7 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 import express from "express";
+import { createServer as createViteServer } from "vite";
 import path from "path";
 import ImageKit from "imagekit";
 import { fileURLToPath } from "url";
@@ -17,20 +18,8 @@ const multerUpload = multer({
   limits: { fileSize: 500 * 1024 * 1024 } // 500 MB max
 });
 
-let __filename = "";
-let __dirname = "";
-try {
-  if (typeof import.meta !== "undefined" && import.meta.url) {
-    __filename = fileURLToPath(import.meta.url);
-    __dirname = path.dirname(__filename);
-  } else {
-    __filename = process.cwd();
-    __dirname = process.cwd();
-  }
-} catch (e) {
-  __filename = process.cwd();
-  __dirname = process.cwd();
-}
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let aiClient: GoogleGenAI | null = null;
 let chatModel: any = null;
@@ -251,47 +240,26 @@ Restricciones de Comportamiento:
 const app = express();
 const PORT = 3000;
 
-// Lazy ImageKit Initialization helper
-function getImageKitInstance() {
-  const publicKey = process.env.VITE_IMAGEKIT_PUBLIC_KEY || process.env.IMAGEKIT_PUBLIC_KEY || "";
-  const privateKey = process.env.IMAGEKIT_PRIVATE_KEY || "";
-  const urlEndpoint = process.env.VITE_IMAGEKIT_URL_ENDPOINT || process.env.IMAGEKIT_URL_ENDPOINT || "";
+// Initialize ImageKit
+console.log("ImageKit Config Check:", {
+  publicKey: process.env.VITE_IMAGEKIT_PUBLIC_KEY ? "Present" : "Missing",
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY ? "Present" : "Missing",
+  urlEndpoint: process.env.VITE_IMAGEKIT_URL_ENDPOINT ? "Present" : "Missing"
+});
 
-  if (!publicKey || !privateKey || !urlEndpoint) {
-    throw new Error("ImageKit configuration missing: Ensure IMAGEKIT_PRIVATE_KEY, VITE_IMAGEKIT_PUBLIC_KEY and VITE_IMAGEKIT_URL_ENDPOINT are set.");
-  }
-
-  return new ImageKit({
-    publicKey,
-    privateKey,
-    urlEndpoint
-  });
-}
+const imagekit = new ImageKit({
+  publicKey: process.env.VITE_IMAGEKIT_PUBLIC_KEY || "",
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY || "",
+  urlEndpoint: process.env.VITE_IMAGEKIT_URL_ENDPOINT || ""
+});
 
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ limit: "100mb", extended: true }));
 
-// Enable CORS for all incoming requests
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
   // Cloudflare R2 Status & Health Endpoint
   // Endpoint for obtaining Cloudflare R2 Presigned Upload URL (Avoids 413 Payload Too Large on server)
-  app.post(["/api/upload/presign", "/upload/presign"], async (req, res) => {
+  app.post("/api/upload/presign", async (req, res) => {
     try {
-      console.log("[R2 Presign] Request received:", {
-        fileName: req.body?.fileName,
-        mimeType: req.body?.mimeType,
-        folder: req.body?.folder,
-      });
-
       const { fileName, mimeType, folder } = req.body || {};
       if (!fileName) {
         return res.status(400).json({ success: false, error: "Se requiere el parámetro 'fileName'." });
@@ -303,7 +271,6 @@ app.use((req, res, next) => {
         folder || "uploads"
       );
 
-      console.log("[R2 Presign] Generated successfully for key:", presignData.key);
       return res.json({
         success: true,
         presignedUrl: presignData.presignedUrl,
@@ -312,42 +279,17 @@ app.use((req, res, next) => {
         bucket: presignData.bucket,
       });
     } catch (error: any) {
-      const config = getR2Config();
-      console.error("[R2 Presign Error]:", {
-        message: error?.message,
-        stack: error?.stack,
-        envCheck: {
-          hasAccountId: Boolean(config.accountId),
-          hasAccessKey: Boolean(config.accessKeyId),
-          hasSecretKey: Boolean(config.secretAccessKey),
-          bucket: config.bucketName,
-        }
-      });
-      return res.status(400).json({
+      console.error("Error al generar presigned URL R2:", error.message);
+      return res.status(500).json({
         success: false,
-        error: error?.message || "Error al generar URL pre-firmada de Cloudflare R2.",
-        envStatus: {
-          configured: Boolean(config.accountId && config.accessKeyId && config.secretAccessKey),
-          missingVars: [
-            !config.accountId && "R2_ACCOUNT_ID",
-            !config.accessKeyId && "R2_ACCESS_KEY_ID",
-            !config.secretAccessKey && "R2_SECRET_ACCESS_KEY",
-          ].filter(Boolean)
-        }
+        error: error.message || "Error al generar URL pre-firmada de Cloudflare R2."
       });
     }
   });
 
-  app.get(["/api/upload", "/upload"], (req, res) => {
+  app.get("/api/upload", (req, res) => {
     const config = getR2Config();
     const isConfigured = Boolean(config.accountId && config.accessKeyId && config.secretAccessKey);
-    console.log("[R2 Health Check] Config status:", {
-      isConfigured,
-      hasAccountId: Boolean(config.accountId),
-      hasAccessKey: Boolean(config.accessKeyId),
-      hasSecretKey: Boolean(config.secretAccessKey),
-      bucket: config.bucketName,
-    });
     res.json({
       status: "ok",
       provider: "Cloudflare R2",
@@ -356,15 +298,15 @@ app.use((req, res, next) => {
       publicUrl: config.publicUrl || "No configurado (usará URL por defecto de R2)",
       message: isConfigured 
         ? "Cloudflare R2 está conectado y listo para subir archivos." 
-        : "Configura R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET_NAME en los Environment Variables de Vercel o en el archivo .env"
+        : "Configura R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY y R2_BUCKET_NAME en el archivo .env"
     });
   });
 
   // Cloudflare R2 Upload Endpoint (Supports both multipart form data and base64 JSON payload)
-  app.post(["/api/upload", "/upload"], (req, res, next) => {
+  app.post("/api/upload", (req, res, next) => {
     multerUpload.single("file")(req, res, (err) => {
       if (err) {
-        console.error("[R2 Upload Multer Error]:", err);
+        console.error("Multer file upload error:", err);
         return res.status(400).json({
           success: false,
           error: `Error al procesar la subida del archivo: ${err.message || err}`
@@ -403,10 +345,10 @@ app.use((req, res, next) => {
         });
       }
 
-      console.log(`[R2 Direct Upload] Processing '${fileName}' (${mimeType}, ${fileBuffer.length} bytes)...`);
+      console.log(`Subiendo archivo '${fileName}' (${mimeType}) a Cloudflare R2...`);
       const uploadResult = await uploadToR2(fileBuffer, fileName, mimeType, folder);
       
-      console.log(`[R2 Direct Upload] Success! URL: ${uploadResult.url}`);
+      console.log(`¡Archivo subido exitosamente a R2! URL: ${uploadResult.url}`);
       return res.json({
         success: true,
         message: "Archivo subido exitosamente a Cloudflare R2",
@@ -415,19 +357,10 @@ app.use((req, res, next) => {
         bucket: uploadResult.bucket
       });
     } catch (error: any) {
-      const config = getR2Config();
-      console.error("[R2 Direct Upload Error]:", {
-        message: error?.message,
-        stack: error?.stack,
-        envCheck: {
-          hasAccountId: Boolean(config.accountId),
-          hasAccessKey: Boolean(config.accessKeyId),
-          hasSecretKey: Boolean(config.secretAccessKey),
-        }
-      });
-      return res.status(400).json({
+      console.error("Error al subir archivo a Cloudflare R2:", error.message);
+      return res.status(500).json({
         success: false,
-        error: error?.message || "Error al subir el archivo a Cloudflare R2."
+        error: error.message || "Error al subir el archivo a Cloudflare R2."
       });
     }
   });
@@ -436,8 +369,12 @@ app.use((req, res, next) => {
   app.get("/api/imagekit/auth", (req, res) => {
     try {
       console.log("Generating ImageKit auth parameters...");
-      const ik = getImageKitInstance();
-      const result = ik.getAuthenticationParameters();
+      
+      if (!process.env.IMAGEKIT_PRIVATE_KEY) {
+        throw new Error("IMAGEKIT_PRIVATE_KEY is missing in environment variables");
+      }
+
+      const result = imagekit.getAuthenticationParameters();
       console.log("Auth parameters generated successfully");
       res.json(result);
     } catch (error: any) {
@@ -900,33 +837,31 @@ RULES:
     }
   });
 
-  // Vite middleware for development or SPA serving in standalone production
+  // Vite middleware for development or SPA serving in production
   if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-    import("vite")
-      .then(({ createServer }) => {
-        createServer({
-          server: { middlewareMode: true },
-          appType: "spa",
-        }).then((vite) => {
-          app.use(vite.middlewares);
-          app.listen(PORT, "0.0.0.0", () => {
-            console.log(`Server running on http://localhost:${PORT}`);
-          });
-        });
-      })
-      .catch((err) => {
-        console.error("Failed to initialize Vite development server:", err);
+    createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    }).then((vite) => {
+      app.use(vite.middlewares);
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
       });
-  } else if (!process.env.VERCEL) {
+    }).catch((err) => {
+      console.error("Failed to initialize Vite development server:", err);
+    });
+  } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
 
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
+    if (!process.env.VERCEL) {
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+      });
+    }
   }
 
 export default app;
